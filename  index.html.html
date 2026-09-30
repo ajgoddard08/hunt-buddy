@@ -93,21 +93,37 @@
     #app { display: none; min-height: 100%; }
     header.appbar {
       display: flex; align-items: center; justify-content: space-between;
-      gap: 12px; padding: 12px 18px;
+      flex-wrap: wrap;
+      gap: 8px; padding: 10px 12px;
       border-bottom: 1px solid var(--line);
       background: #172015;
       position: sticky; top: 0; z-index: 20;
     }
-    nav.tabs { display: flex; gap: 8px; }
+    header.appbar .brand-row { margin: 0; }
+    nav.tabs {
+      display: flex; gap: 6px;
+      flex: 1 1 100%;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      padding-bottom: 2px;
+    }
     nav.tabs button {
       background: transparent; border: 1px solid transparent;
-      padding: 8px 14px; border-radius: 999px; cursor: pointer;
+      padding: 8px 12px; border-radius: 999px; cursor: pointer;
       color: var(--muted);
+      white-space: nowrap;
+      flex: 0 0 auto;
     }
     nav.tabs button.active {
       color: #1a1408; border-color: #ff6a13; background: #ff6a13;
     }
-    .userbox { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 14px; }
+    .userbox { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+    .userbox #who {
+      max-width: 110px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
     main { padding: 18px; max-width: 1200px; margin: 0 auto; }
     .page { display: none; }
     .page.show { display: block; }
@@ -153,9 +169,23 @@
       grid-template-columns: repeat(24, 1fr);
       gap: 3px;
       align-items: end;
-      height: 110px;
+      height: 96px;
       padding: 6px 2px 0;
-      border-bottom: 1px solid var(--line);
+    }
+    .hour-axis {
+      display: grid;
+      grid-template-columns: repeat(24, 1fr);
+      gap: 3px;
+      margin-top: 6px;
+      padding-top: 6px;
+      border-top: 1px solid var(--line);
+    }
+    .hour-axis span {
+      font-size: 10px;
+      color: var(--muted);
+      text-align: center;
+      line-height: 1.1;
+      min-height: 1.2em;
     }
     .h-bar {
       display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
@@ -167,16 +197,25 @@
       border-radius: 3px 3px 0 0;
       min-height: 4px;
     }
-    .h-bar small {
-      font-size: 9px; color: var(--muted); margin-top: 4px;
-      transform: rotate(-55deg); transform-origin: top left;
-      height: 0; overflow: visible;
-    }
     .h-bar.now span.col { outline: 1px solid #fff; }
-    .h-bar.prime span.col { box-shadow: 0 0 0 1px #ff6a13; }
 
     .week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; margin-top: 14px; }
-    @media (max-width: 800px) { .week { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 800px) {
+      .week { grid-template-columns: 1fr 1fr; }
+      main { padding: 12px; }
+      .card { padding: 12px; }
+      .row { align-items: stretch; }
+      .row input, .row select, .row button { width: 100%; }
+      .row button { min-height: 42px; }
+      .factor { grid-template-columns: 1fr; gap: 4px; }
+      .hourly { height: 100px; padding-bottom: 0; gap: 2px; }
+      .hour-axis span { font-size: 9px; }
+      #map { height: 320px; }
+      .userbox #who { display: none; }
+    }
+    @media (max-width: 420px) {
+      header.appbar .brand { font-size: 16px; }
+    }
     .day {
       background: var(--panel2);
       border: 1px solid var(--line);
@@ -184,7 +223,12 @@
       padding: 10px;
       cursor: pointer;
     }
-    .day.on { outline: 2px solid #ff6a13; }
+    .day.good { border-color: #8fbf62; }
+    .day.good .s { color: #8fbf62; }
+    .day.mid { border-color: #ff6a13; }
+    .day.mid .s { color: #ff6a13; }
+    .day.poor { border-color: #c81e1e; }
+    .day.poor .s { color: #c45a3a; }
     .day .d { font-size: 12px; color: var(--muted); }
     .day .s { font-size: 22px; font-family: Oswald, sans-serif; }
 
@@ -252,6 +296,7 @@
         <input id="password" type="password" required minlength="4" autocomplete="current-password" />
         <p class="hint" id="authErr" style="color:#ff8a3d;display:none"></p>
         <button class="btn full" type="submit" id="authBtn">Log in</button>
+        <button class="btn ghost full" type="button" id="guestBtn">Enter as guest</button>
       </form>
       <div class="switch">
         <span id="toggleAuth">Need an account? <a id="modeLink">Create one</a></span>
@@ -267,7 +312,9 @@
         <div class="brand">HUNT BUDDY</div>
       </div>
       <nav class="tabs">
-        <button class="active" data-page="hunt">Hunting</button>
+        <button class="active" data-page="hunt">Forecast</button>
+        <button data-page="mapPage">Map</button>
+        <button data-page="farms">Farms</button>
         <button data-page="fish">Fishing</button>
       </nav>
       <div class="userbox">
@@ -299,16 +346,29 @@
             <div class="hourly-wrap">
               <h3>Hourly activity</h3>
               <div class="hourly" id="huntHourly"></div>
-              <p class="tiny" id="huntHourHint" style="margin-top:18px"></p>
+              <div class="hour-axis" id="huntHourAxis"></div>
+              <p class="tiny" id="huntHourHint" style="margin-top:10px"></p>
             </div>
             <div class="factors" id="huntFactors"></div>
             <div class="week" id="huntWeek"></div>
           </div>
-          <div class="card">
-            <h2>Your land & wind</h2>
-            <p class="tiny">Drop a named pin or click 3+ corners to outline a farm. Finish to save. Little arrows cover the map and show drift. Color = wind speed.</p>
+        </div>
+        <p class="footer note">Weather score plus your farm notes (habitat and when you actually saw deer). Open-Meteo weather.</p>
+      </section>
+
+      <section id="mapPage" class="page">
+        <div class="card">
+            <h2>Wind & farm map</h2>
+            <p class="tiny">Drop a named pin or click 3+ corners to outline a farm. Finish to save. Then add habitat and sightings on the Farms tab — that feeds the forecast.</p>
             <div class="row" style="margin:10px 0">
               <input id="landName" placeholder="Stand or farm name" />
+              <select id="newHabitat" style="width:auto">
+                <option value="woods">Woods</option>
+                <option value="corn">Corn</option>
+                <option value="beans">Beans</option>
+                <option value="clover">Clover / plot</option>
+                <option value="mix">Mix / edge</option>
+              </select>
               <button class="btn gold" id="startPin">Drop pin</button>
               <button class="btn gold" id="startDraw">Outline land</button>
               <button class="btn" id="finishDraw">Finish land</button>
@@ -319,9 +379,39 @@
             <p class="tiny" style="text-align:center" id="windLabel">Wind —</p>
             <p class="tiny" style="text-align:center">Wind color: <span style="color:#7ec8ff">calm</span> · <span style="color:#8fbf62">easy</span> · <span style="color:#ff6a13">prime</span> · <span style="color:#e24a12">strong</span> · <span style="color:#c81e1e">blown</span></p>
             <div class="land-list" id="landList"></div>
+        </div>
+      </section>
+
+      <section id="farms" class="page">
+        <div class="card">
+          <h2>Farm notes</h2>
+          <p class="tiny">Pick a saved spot. Habitat and deer sightings change that property’s forecast — not just statewide weather.</p>
+          <select id="farmPick"></select>
+          <div id="farmEditor" style="display:none;margin-top:14px">
+            <label>Name</label>
+            <input id="farmNameEdit" />
+            <label>Habitat</label>
+            <select id="farmHabitat">
+              <option value="woods">Woods / timber</option>
+              <option value="corn">Corn field</option>
+              <option value="beans">Bean field</option>
+              <option value="clover">Clover / food plot</option>
+              <option value="mix">Mix / edge / CRP</option>
+            </select>
+            <label>Notes</label>
+            <textarea id="farmNotes" rows="3" placeholder="Standing beans on the north 40, oak ridge on the south…"></textarea>
+            <button class="btn" type="button" id="saveFarmInfo" style="margin-top:12px">Save farm info</button>
+            <h3 style="margin:18px 0 8px">Deer seen</h3>
+            <div class="row">
+              <input id="seeDate" type="date" style="width:auto" />
+              <input id="seeTime" type="time" style="width:auto" />
+              <input id="seeCount" type="number" min="1" value="1" placeholder="#" style="width:80px" />
+              <input id="seeNote" placeholder="Does in beans / buck on ridge" />
+              <button class="btn gold" type="button" id="addSighting">Add sighting</button>
+            </div>
+            <div class="land-list" id="sightList" style="margin-top:12px"></div>
           </div>
         </div>
-        <p class="footer note">Forecast score is a field guide, not a guarantee. Built from temperature change, cold-front timing, pressure trend, wind speed/direction, and moon phase. Weather: Open-Meteo.</p>
       </section>
 
       <section id="fish" class="page">
@@ -339,6 +429,12 @@
               <div class="badge" id="fishBadge">—</div>
               <div class="tiny" id="fishWhy"></div>
             </div>
+          </div>
+          <div class="hourly-wrap">
+            <h3>Hourly bite</h3>
+            <div class="hourly" id="fishHourly"></div>
+            <div class="hour-axis" id="fishHourAxis"></div>
+            <p class="tiny" id="fishHourHint" style="margin-top:10px"></p>
           </div>
           <div class="factors" id="fishFactors"></div>
           <div class="week" id="fishDays"></div>
@@ -374,7 +470,7 @@
     let mode = 'login';
     let map, drawnItems, selectedLand = null, lastWind = { deg: 0, speed: 0 };
     let windLayer = null;
-    let huntWx = null, fishWx = null;
+    let huntWx = null, fishWx = null, lastMarine = null;
     let huntCoords = { lat: 40.043, lon: -86.158, label: 'Westfield, Indiana' };
     let fishCoords = { lat: 39.927, lon: -85.947, label: 'Geist Reservoir, Indiana' };
 
@@ -415,6 +511,14 @@
       }
       store.setSession(email);
       localStorage.setItem('ff_last_user', email);
+      localStorage.setItem('ff_stay', '1');
+      enterApp();
+    };
+    $('guestBtn').onclick = () => {
+      seedDemo();
+      store.setSession('buddy');
+      localStorage.setItem('ff_last_user', 'buddy');
+      localStorage.setItem('ff_stay', '1');
       enterApp();
     };
 
@@ -426,19 +530,25 @@
         btn.classList.add('active');
         document.querySelectorAll('.page').forEach(p => p.classList.remove('show'));
         $(btn.dataset.page).classList.add('show');
-        if (btn.dataset.page === 'hunt' && map) setTimeout(() => map.invalidateSize(), 50);
+        if ((btn.dataset.page === 'hunt' || btn.dataset.page === 'mapPage') && map) setTimeout(() => map.invalidateSize(), 80);
+        if (btn.dataset.page === 'farms') fillFarmPick();
         if (btn.dataset.page === 'fish' && !fishWx) loadFish();
       };
     });
 
     function enterApp() {
-      $('auth').style.display = 'none';
-      $('app').style.display = 'block';
-      $('who').textContent = store.session();
-      initMap();
-      renderLands();
-      loadHunt();
-      startAutoRefresh();
+      try {
+        $('auth').style.display = 'none';
+        $('app').style.display = 'block';
+        $('who').textContent = (store.session() || 'guest').split('@')[0];
+        try { initMap(); } catch (e) { console.warn(e); }
+        try { renderLands(); } catch (e) { console.warn(e); }
+        try { fillSavedMenu(); } catch (e) {}
+        loadHunt();
+        startAutoRefresh();
+      } catch (e) {
+        alert('Logged in, but part of the page failed to load. Refresh and try again.');
+      }
     }
 
     async function geocode(q) {
@@ -447,14 +557,52 @@
         return { lat, lon, label: q };
       }
       const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=1&language=en&format=json`;
-      const r = await fetch(url);
-      const j = await r.json();
-      if (!j.results || !j.results.length) throw new Error('Place not found');
-      const p = j.results[0];
-      return { lat: p.latitude, lon: p.longitude, label: `${p.name}${p.admin1 ? ', ' + p.admin1 : ''}` };
+      try {
+        const r = await fetch(url);
+        const j = await r.json();
+        if (j.results && j.results.length) {
+          const p = j.results[0];
+          return { lat: p.latitude, lon: p.longitude, label: `${p.name}${p.admin1 ? ', ' + p.admin1 : ''}` };
+        }
+      } catch (e) {}
+      const r2 = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(q), {
+        headers: { 'Accept': 'application/json' }
+      });
+      const arr = await r2.json();
+      if (!arr || !arr.length) throw new Error('Place not found');
+      return { lat: Number(arr[0].lat), lon: Number(arr[0].lon), label: arr[0].display_name.split(',').slice(0, 2).join(',') };
     }
 
     async function fetchWx(lat, lon) {
+      const cacheKey = 'ff_wx_' + Number(lat).toFixed(2) + '_' + Number(lon).toFixed(2);
+      try {
+        const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+        if (cached && cached.j && Date.now() - cached.t < 20 * 60 * 1000) return cached.j;
+      } catch (e) {}
+      try {
+        return await fetchWxMeteo(lat, lon, cacheKey);
+      } catch (e1) {
+        try {
+          const j = await fetchWxWttr(lat, lon);
+          try { localStorage.setItem(cacheKey, JSON.stringify({ t: Date.now(), j })); } catch (e) {}
+          return j;
+        } catch (eW) {
+          try {
+            const j = await fetchWxNws(lat, lon);
+            try { localStorage.setItem(cacheKey, JSON.stringify({ t: Date.now(), j })); } catch (e) {}
+            return j;
+          } catch (e2) {
+            try {
+              const hit = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+              if (hit && hit.j) return hit.j;
+            } catch (e) {}
+            return offlineWx(lat, lon);
+          }
+        }
+      }
+    }
+
+    async function fetchWxMeteo(lat, lon, cacheKey) {
       const params = new URLSearchParams({
         latitude: lat, longitude: lon,
         current: 'temperature_2m,apparent_temperature,precipitation,weather_code,cloud_cover,pressure_msl,wind_speed_10m,wind_direction_10m,wind_gusts_10m',
@@ -469,7 +617,196 @@
       });
       const r = await fetch('https://api.open-meteo.com/v1/forecast?' + params);
       if (!r.ok) throw new Error('Weather request failed');
-      return r.json();
+      const j = await r.json();
+      if (j.error) throw new Error(j.reason || 'Weather error');
+      try { localStorage.setItem(cacheKey, JSON.stringify({ t: Date.now(), j })); } catch (e) {}
+      return j;
+    }
+
+    function nwsDir(txt) {
+      const map = {N:0,NNE:22,NE:45,ENE:67,E:90,ESE:112,SE:135,SSE:157,S:180,SSW:202,SW:225,WSW:247,W:270,WNW:292,NW:315,NNW:337};
+      return map[String(txt || 'S').toUpperCase()] ?? 180;
+    }
+    function nwsMph(txt) {
+      const n = String(txt || '').match(/(\d+)/g);
+      if (!n) return 6;
+      return n.length > 1 ? (Number(n[0]) + Number(n[1])) / 2 : Number(n[0]);
+    }
+
+    function packWx(source, current, hourly, daily) {
+      return { source, current, hourly, daily };
+    }
+
+    async function fetchWxWttr(lat, lon) {
+      const r = await fetch('https://wttr.in/' + lat + ',' + lon + '?format=j1');
+      if (!r.ok) throw new Error('wttr failed');
+      const d = await r.json();
+      const cur = d.current_condition && d.current_condition[0];
+      if (!cur) throw new Error('wttr empty');
+      const hourly = {
+        time: [], temperature_2m: [], precipitation: [], cloud_cover: [],
+        pressure_msl: [], wind_speed_10m: [], wind_direction_10m: [], wind_gusts_10m: [],
+        soil_temperature_0cm: []
+      };
+      const daily = {
+        time: [], temperature_2m_max: [], temperature_2m_min: [], precipitation_sum: [],
+        wind_speed_10m_max: [], wind_direction_10m_dominant: [], sunrise: [], sunset: [], weather_code: []
+      };
+      (d.weather || []).forEach(day => {
+        const date = day.date;
+        daily.time.push(date);
+        daily.temperature_2m_max.push(Number(day.maxtempF));
+        daily.temperature_2m_min.push(Number(day.mintempF));
+        daily.precipitation_sum.push(Number(day.totalSnow_cm || 0) * 0 + Number((day.hourly || []).reduce((s, h) => s + Number(h.precipInches || 0), 0)));
+        const winds = (day.hourly || []).map(h => Number(h.windspeedMiles || 0));
+        daily.wind_speed_10m_max.push(winds.length ? Math.max(...winds) : Number(cur.windspeedMiles));
+        daily.wind_direction_10m_dominant.push(nwsDir((day.hourly && day.hourly[4] && day.hourly[4].winddir16Point) || cur.winddir16Point));
+        daily.sunrise.push(date + 'T07:00');
+        daily.sunset.push(date + 'T19:15');
+        daily.weather_code.push(1);
+        (day.hourly || []).forEach(h => {
+          const hour = String(Math.floor(Number(h.time) / 100)).padStart(2, '0');
+          hourly.time.push(date + 'T' + hour + ':00');
+          hourly.temperature_2m.push(Number(h.tempF));
+          hourly.precipitation.push(Number(h.precipInches || 0));
+          hourly.cloud_cover.push(Number(h.cloudcover || 40));
+          hourly.pressure_msl.push(Number(h.pressure || 1016));
+          hourly.wind_speed_10m.push(Number(h.windspeedMiles || 6));
+          hourly.wind_direction_10m.push(nwsDir(h.winddir16Point));
+          hourly.wind_gusts_10m.push(Number(h.WindGustMiles || h.windspeedMiles || 6));
+          hourly.soil_temperature_0cm.push(Number(h.tempF) - 3);
+        });
+      });
+      return packWx('wttr', {
+        temperature_2m: Number(cur.temp_F),
+        pressure_msl: Number(cur.pressure),
+        wind_speed_10m: Number(cur.windspeedMiles),
+        wind_direction_10m: nwsDir(cur.winddir16Point),
+        wind_gusts_10m: Number(cur.WindGustMiles || cur.windspeedMiles),
+        cloud_cover: Number(cur.cloudcover),
+        precipitation: Number(cur.precipIn || 0)
+      }, hourly, daily);
+    }
+
+    function offlineWx() {
+      const today = new Date();
+      const hourly = {
+        time: [], temperature_2m: [], precipitation: [], cloud_cover: [],
+        pressure_msl: [], wind_speed_10m: [], wind_direction_10m: [], wind_gusts_10m: [],
+        soil_temperature_0cm: []
+      };
+      const daily = {
+        time: [], temperature_2m_max: [], temperature_2m_min: [], precipitation_sum: [],
+        wind_speed_10m_max: [], wind_direction_10m_dominant: [], sunrise: [], sunset: [], weather_code: []
+      };
+      for (let d = -1; d < 7; d++) {
+        const day = new Date(today.getFullYear(), today.getMonth(), today.getDate() + d);
+        const date = localYMD(day);
+        const max = 78 - d * 3;
+        const min = 56 - d * 2;
+        daily.time.push(date);
+        daily.temperature_2m_max.push(max);
+        daily.temperature_2m_min.push(min);
+        daily.precipitation_sum.push(d === 2 ? 0.15 : 0);
+        daily.wind_speed_10m_max.push(8 + (d % 3) * 2);
+        daily.wind_direction_10m_dominant.push(180);
+        daily.sunrise.push(date + 'T07:12');
+        daily.sunset.push(date + 'T19:18');
+        daily.weather_code.push(1);
+        for (let h = 0; h < 24; h++) {
+          const temp = min + (max - min) * Math.sin((h - 5) / 24 * Math.PI);
+          hourly.time.push(date + 'T' + String(h).padStart(2, '0') + ':00');
+          hourly.temperature_2m.push(Math.round(temp));
+          hourly.precipitation.push(0);
+          hourly.cloud_cover.push(40);
+          hourly.pressure_msl.push(1018 + d);
+          hourly.wind_speed_10m.push(7);
+          hourly.wind_direction_10m.push(180);
+          hourly.wind_gusts_10m.push(10);
+          hourly.soil_temperature_0cm.push(temp - 3);
+        }
+      }
+      return packWx('offline', {
+        temperature_2m: 73, pressure_msl: 1018, wind_speed_10m: 6,
+        wind_direction_10m: 180, wind_gusts_10m: 9, cloud_cover: 40, precipitation: 0
+      }, hourly, daily);
+    }
+
+    async function fetchWxNws(lat, lon) {
+      const headers = { 'Accept': 'application/geo+json', 'User-Agent': 'HuntBuddy (local forecast app)' };
+      const pt = await fetch('https://api.weather.gov/points/' + lat + ',' + lon, { headers });
+      if (!pt.ok) throw new Error('NWS points failed');
+      const pj = await pt.json();
+      const hourlyUrl = pj.properties && pj.properties.forecastHourly;
+      if (!hourlyUrl) throw new Error('No hourly forecast');
+      const hr = await fetch(hourlyUrl, { headers });
+      if (!hr.ok) throw new Error('NWS hourly failed');
+      const hj = await hr.json();
+      const periods = (hj.properties && hj.properties.periods) || [];
+      if (!periods.length) throw new Error('Empty NWS forecast');
+
+      const byDay = {};
+      const hourly = {
+        time: [], temperature_2m: [], precipitation: [], cloud_cover: [],
+        pressure_msl: [], wind_speed_10m: [], wind_direction_10m: [], wind_gusts_10m: [],
+        soil_temperature_0cm: []
+      };
+      periods.slice(0, 200).forEach(p => {
+        const when = new Date(p.startTime);
+        const stamp = localYMD(when) + 'T' + String(when.getHours()).padStart(2,'0') + ':00';
+        const temp = Number(p.temperature);
+        const wind = nwsMph(p.windSpeed);
+        const dir = nwsDir(p.windDirection);
+        const pop = (p.probabilityOfPrecipitation && p.probabilityOfPrecipitation.value) || 0;
+        const rain = pop > 60 ? 0.2 : pop > 30 ? 0.05 : 0;
+        const txt = (p.shortForecast || '').toLowerCase();
+        let cloud = 40;
+        if (txt.includes('sunny') || txt.includes('clear')) cloud = 15;
+        else if (txt.includes('cloud') || txt.includes('overcast')) cloud = 80;
+        else if (txt.includes('rain') || txt.includes('shower') || txt.includes('storm')) cloud = 90;
+        hourly.time.push(stamp);
+        hourly.temperature_2m.push(temp);
+        hourly.precipitation.push(rain);
+        hourly.cloud_cover.push(cloud);
+        hourly.pressure_msl.push(1016);
+        hourly.wind_speed_10m.push(wind);
+        hourly.wind_direction_10m.push(dir);
+        hourly.wind_gusts_10m.push(wind + 3);
+        hourly.soil_temperature_0cm.push(temp - 3);
+        const day = stamp.slice(0, 10);
+        if (!byDay[day]) byDay[day] = { temps: [], winds: [], dirs: [], rain: 0 };
+        byDay[day].temps.push(temp);
+        byDay[day].winds.push(wind);
+        byDay[day].dirs.push(dir);
+        byDay[day].rain += rain;
+      });
+      const days = Object.keys(byDay).sort();
+      const daily = {
+        time: days,
+        temperature_2m_max: days.map(d => Math.max(...byDay[d].temps)),
+        temperature_2m_min: days.map(d => Math.min(...byDay[d].temps)),
+        precipitation_sum: days.map(d => byDay[d].rain),
+        wind_speed_10m_max: days.map(d => Math.max(...byDay[d].winds)),
+        wind_direction_10m_dominant: days.map(d => byDay[d].dirs[0]),
+        sunrise: days.map(d => d + 'T07:00'),
+        sunset: days.map(d => d + 'T19:15'),
+        weather_code: days.map(() => 1)
+      };
+      const c0 = periods[0];
+      return {
+        source: 'nws',
+        current: {
+          temperature_2m: Number(c0.temperature),
+          pressure_msl: 1016,
+          wind_speed_10m: nwsMph(c0.windSpeed),
+          wind_direction_10m: nwsDir(c0.windDirection),
+          wind_gusts_10m: nwsMph(c0.windSpeed) + 3,
+          cloud_cover: 40,
+          precipitation: 0
+        },
+        hourly,
+        daily
+      };
     }
 
     async function fetchMarine(lat, lon) {
@@ -511,7 +848,81 @@
       return dirs[Math.round(((deg % 360) / 22.5)) % 16];
     }
 
-    function hPaToInHg(h) { return h * 0.02953; }
+    function localYMD(d) {
+      const x = d ? new Date(d) : new Date();
+      const y = x.getFullYear();
+      const m = String(x.getMonth() + 1).padStart(2, '0');
+      const day = String(x.getDate()).padStart(2, '0');
+      return y + '-' + m + '-' + day;
+    }
+
+    function habitatHourBoost(habitat, month, hour) {
+      const h = habitat || 'woods';
+      let n = 0;
+      const dawn = hour >= 5 && hour <= 8;
+      const dusk = hour >= 16 && hour <= 19;
+      const mid = hour >= 10 && hour <= 14;
+      if (h === 'woods') {
+        if (dawn || dusk) n += 8;
+        if (month >= 10 && month <= 11 && !mid) n += 6;
+      } else if (h === 'corn' || h === 'beans') {
+        if (month >= 8 && month <= 10 && dusk) n += 14;
+        if (month >= 8 && month <= 10 && dawn) n += 8;
+        if (month === 11) n += (dawn || dusk) ? 4 : 0;
+      } else if (h === 'clover') {
+        if (dusk) n += 12;
+        if (dawn) n += 6;
+        if (month >= 9 && month <= 11 && dusk) n += 4;
+      } else if (h === 'mix') {
+        if (dawn || dusk) n += 10;
+      }
+      return n;
+    }
+
+    function sightingHourBoost(rec, hour, dateStr) {
+      const list = (rec && rec.sightings) || [];
+      if (!list.length) return { pts: 0, recent: 0, label: '' };
+      let pts = 0, recent = 0, hits = 0;
+      const day = dateStr ? new Date(dateStr + 'T12:00') : new Date();
+      list.forEach(s => {
+        const sd = new Date(s.date + 'T12:00');
+        const age = (day - sd) / 86400000;
+        if (age < 0 || age > 45) return;
+        const sh = s.time ? parseInt(String(s.time).slice(0, 2), 10) : null;
+        const weight = age <= 3 ? 8 : age <= 10 ? 5 : age <= 21 ? 3 : 1;
+        recent += (s.count || 1) * (age <= 10 ? 1 : 0);
+        if (sh == null || Math.abs(sh - hour) <= 1) {
+          pts += weight;
+          hits++;
+        }
+      });
+      return { pts: Math.min(18, pts), recent, hits };
+    }
+
+    function landDailyBoost(rec, dateObj) {
+      if (!rec) return { pts: 0, bits: [] };
+      const month = dateObj.getMonth() + 1;
+      const bits = [];
+      let pts = 0;
+      const hab = rec.habitat || 'woods';
+      if (hab === 'corn' || hab === 'beans') {
+        if (month >= 8 && month <= 10) { pts += 8; bits.push(['Food source', hab + ' in season', 80]); }
+      } else if (hab === 'clover') {
+        if (month >= 8 && month <= 11) { pts += 6; bits.push(['Food plot', 'clover', 70]); }
+      } else if (hab === 'woods') {
+        if (month >= 10 && month <= 12) { pts += 5; bits.push(['Timber', 'fall woods travel', 65]); }
+      }
+      const list = rec.sightings || [];
+      const recent = list.filter(s => {
+        const age = (dateObj - new Date(s.date + 'T12:00')) / 86400000;
+        return age >= 0 && age <= 10;
+      });
+      if (recent.length) {
+        pts += Math.min(12, recent.length * 3);
+        bits.push(['Recent deer', recent.length + ' sighting(s) last 10 days', 85]);
+      }
+      return { pts, bits };
+    }
 
     function scoreDeerDay(wx, dayIndex) {
       const daily = wx.daily;
@@ -567,6 +978,10 @@
       if (moon.name === 'New' || moon.name === 'Full') { score += 3; factors.push(['Moon', moon.name, 60]); }
       else factors.push(['Moon', moon.name, 45]);
 
+      const land = landDailyBoost(selectedLand, date);
+      score += land.pts;
+      land.bits.forEach(b => factors.push(b));
+
       score = Math.max(8, Math.min(98, Math.round(score)));
       let label = 'Fair';
       if (score >= 72) label = 'Prime sit';
@@ -618,6 +1033,11 @@
         if (rain > 0.15) score -= 14;
         else if (rain > 0.02) score -= 4;
         if (press - prevP > 1) score += 6;
+        const month = when.getMonth() + 1;
+        if (selectedLand) {
+          score += habitatHourBoost(selectedLand.habitat, month, hour);
+          score += sightingHourBoost(selectedLand, hour, dateStr).pts;
+        }
         score = Math.max(8, Math.min(98, Math.round(score)));
         hours.push({ t, hour, label: hourLabel(t), score, temp, wind, rain });
       });
@@ -626,22 +1046,12 @@
 
     function renderHourly(dayIndex) {
       const hours = scoreDeerHours(huntWx, dayIndex);
-      const nowH = new Date().getHours();
-      const today = new Date().toISOString().slice(0, 10);
+      const today = localYMD();
       const isToday = huntWx.daily.time[dayIndex] === today;
-      const peak = hours.reduce((m, h) => h.score > m.score ? h : m, hours[0] || { score: 0, label: '—' });
-      $('huntHourly').innerHTML = hours.map(h => {
-        const cls = (isToday && h.hour === nowH) ? 'now' : (h.score >= 72 ? 'prime' : '');
-        const color = h.score >= 72 ? '#ff6a13' : h.score >= 58 ? '#8fbf62' : h.score < 40 ? '#c45a32' : '#d4a24a';
-        const show = h.hour % 3 === 0;
-        return `<div class="h-bar ${cls}" title="${h.label}: ${h.score} · ${h.temp.toFixed(0)}°F · ${h.wind.toFixed(0)} mph">
-          <span class="col" style="height:${Math.max(8, h.score)}%;background:${color}"></span>
-          <small>${show ? h.label : ''}</small>
-        </div>`;
-      }).join('');
-      $('huntHourHint').textContent = peak
-        ? ('Best window this day looks like ' + peak.label + ' (' + peak.score + '). Orange bars are prime hours.')
-        : '';
+      paintHourly(hours, 'huntHourly', 'huntHourAxis', 'huntHourHint', isToday);
+      if (selectedLand) {
+        $('huntHourHint').textContent += ' Includes ' + (selectedLand.habitat || 'woods') + ' and your sighting times.';
+      }
     }
 
     function scoreFishDay(wx, marine, dayIndex) {
@@ -700,18 +1110,81 @@
       return { score, label, factors, water, wind, pTrend, dateStr };
     }
 
+    function scoreFishHours(wx, marine, dayIndex) {
+      const dateStr = wx.daily.time[dayIndex];
+      const hours = [];
+      wx.hourly.time.forEach((t, i) => {
+        if (!t.startsWith(dateStr)) return;
+        const hour = parseInt(t.slice(11, 13), 10);
+        const wind = wx.hourly.wind_speed_10m[i];
+        const rain = wx.hourly.precipitation[i] || 0;
+        const cloud = wx.hourly.cloud_cover[i] || 0;
+        const press = wx.hourly.pressure_msl[i];
+        const prevP = i > 3 ? wx.hourly.pressure_msl[i - 3] : press;
+        const temp = wx.hourly.temperature_2m[i];
+        let water = temp - 4;
+        if (marine && marine.hourly && marine.hourly.sea_surface_temperature) {
+          const mi = marine.hourly.time.indexOf(t);
+          if (mi >= 0) water = marine.hourly.sea_surface_temperature[mi];
+        } else if (wx.hourly.soil_temperature_0cm) water = wx.hourly.soil_temperature_0cm[i] ?? water;
+        let score = 42;
+        if (hour >= 5 && hour <= 8) score += 14;
+        else if (hour >= 17 && hour <= 20) score += 16;
+        else if (hour >= 11 && hour <= 15) score += 6;
+        else if (hour >= 22 || hour <= 4) score -= 4;
+        if (press - prevP < -0.6) score += 14;
+        else if (press - prevP > 1.2) score -= 8;
+        if (cloud >= 60) score += 8;
+        else if (cloud <= 20) score -= 4;
+        if (wind >= 5 && wind <= 15) score += 8;
+        else if (wind > 22) score -= 10;
+        if (water >= 48 && water <= 72) score += 8;
+        else if (water < 42) score -= 8;
+        if (rain > 0.2) score -= 8;
+        score = Math.max(8, Math.min(98, Math.round(score)));
+        hours.push({ t, hour, label: hourLabel(t), score });
+      });
+      return hours;
+    }
+
+    function renderFishHourly(dayIndex, marine) {
+      const hours = scoreFishHours(fishWx, marine || lastMarine, dayIndex);
+      const today = localYMD();
+      paintHourly(hours, 'fishHourly', 'fishHourAxis', 'fishHourHint', fishWx.daily.time[dayIndex] === today);
+    }
+
     function ratingClass(score) {
-      if (score >= 72) return 'good';
-      if (score >= 58) return 'mid';
-      if (score < 40) return 'poor';
-      return '';
+      if (score >= 58) return 'good';
+      if (score >= 40) return 'mid';
+      return 'poor';
+    }
+    function toneColor(score) {
+      if (score >= 58) return '#8fbf62';
+      if (score >= 40) return '#ff6a13';
+      return '#c81e1e';
+    }
+    function paintHourly(hours, barId, axisId, hintId, isToday) {
+      const nowH = new Date().getHours();
+      const peak = hours.reduce((m, h) => h.score > m.score ? h : m, hours[0] || { score: 0, label: '—' });
+      $(barId).innerHTML = hours.map(h => {
+        const cls = (isToday && h.hour === nowH) ? 'now' : '';
+        return `<div class="h-bar ${cls}" title="${h.label}: ${h.score}">
+          <span class="col" style="height:${Math.max(8, h.score)}%;background:${toneColor(h.score)}"></span>
+        </div>`;
+      }).join('');
+      $(axisId).innerHTML = hours.map(h =>
+        `<span>${(h.hour % 3 === 0) ? h.label : ''}</span>`
+      ).join('');
+      if (hintId && peak) {
+        $(hintId).textContent = 'Best window this day looks like ' + peak.label + ' (' + peak.score + '). Green good · orange okay · red slow.';
+      }
     }
 
     function renderFactors(el, factors) {
       el.innerHTML = factors.map(f => `
         <div class="factor">
           <span>${f[0]}</span>
-          <div class="bar"><i style="width:${f[2]}%"></i></div>
+          <div class="bar"><i style="width:${f[2]}%;background:${factorBarColor(f[2])}"></i></div>
           <span class="tiny">${f[1]}</span>
         </div>`).join('');
     }
@@ -719,24 +1192,31 @@
     async function loadHunt(opts) {
       const quiet = opts && opts.quiet;
       const skipView = opts && opts.skipView;
+      if (!huntWx) {
+        huntWx = offlineWx();
+        try { renderHuntWeek(0); } catch (e) {}
+      }
       if (!quiet) $('huntMeta').textContent = 'Loading weather for ' + huntCoords.label + '…';
       try {
         huntWx = await fetchWx(huntCoords.lat, huntCoords.lon);
         const stamp = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
         $('huntMeta').textContent = huntCoords.label + ' · ' + huntWx.current.temperature_2m + '°F now · wind ' +
-          huntWx.current.wind_speed_10m + ' mph ' + dirName(huntWx.current.wind_direction_10m) + ' · updated ' + stamp;
+          huntWx.current.wind_speed_10m + ' mph ' + dirName(huntWx.current.wind_direction_10m) + ' · updated ' + stamp +
+          (huntWx.source === 'nws' ? ' · NWS' : huntWx.source === 'wttr' ? ' · backup weather' : huntWx.source === 'offline' ? ' · offline estimate' : '');
         renderHuntWeek(0);
         updateWindArrow(huntWx.current.wind_direction_10m, huntWx.current.wind_speed_10m);
         if (map && !skipView && !quiet) map.setView([huntCoords.lat, huntCoords.lon], map.getZoom() || 12);
       } catch (err) {
-        if (!quiet) $('huntMeta').textContent = 'Could not load weather. Check connection and try again.';
+        huntWx = huntWx || offlineWx();
+        try { renderHuntWeek(0); updateWindArrow(huntWx.current.wind_direction_10m, huntWx.current.wind_speed_10m); } catch (e) {}
+        $('huntMeta').textContent = huntCoords.label + ' · offline estimate (live weather blocked in this file). Use the GitHub website for live data.';
       }
     }
 
     function renderHuntWeek(sel) {
       const days = huntWx.daily.time.map((_, i) => scoreDeerDay(huntWx, i));
       // first two days may be past_days
-      const start = Math.max(0, huntWx.daily.time.findIndex(t => t === new Date().toISOString().slice(0,10)));
+      const start = Math.max(0, huntWx.daily.time.findIndex(t => t === localYMD()));
       const view = days.map((d, i) => ({ ...d, i })).slice(start, start + 7);
       if (!view.length) return;
       const pick = view[Math.min(sel, view.length - 1)];
@@ -758,21 +1238,27 @@
     }
 
     async function loadFish() {
+      if (!fishWx) {
+        fishWx = offlineWx();
+        try { renderFishDays(0, null); } catch (e) {}
+      }
       $('fishMeta').textContent = 'Loading forecast for ' + fishCoords.label + '…';
       try {
         fishWx = await fetchWx(fishCoords.lat, fishCoords.lon);
-        const marine = await fetchMarine(fishCoords.lat, fishCoords.lon);
+        lastMarine = await fetchMarine(fishCoords.lat, fishCoords.lon);
         $('fishMeta').textContent = fishCoords.label + ' · air ' + fishWx.current.temperature_2m + '°F · pressure ' +
           hPaToInHg(fishWx.current.pressure_msl).toFixed(2) + ' inHg · updated ' +
           new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-        renderFishDays(0, marine);
+        renderFishDays(0, lastMarine);
       } catch {
-        $('fishMeta').textContent = 'Could not load fishing weather.';
+        fishWx = fishWx || offlineWx();
+        try { renderFishDays(0, null); } catch (e) {}
+        $('fishMeta').textContent = fishCoords.label + ' · offline estimate. Open the GitHub website for live weather.';
       }
     }
 
     function renderFishDays(sel, marine) {
-      const start = Math.max(0, fishWx.daily.time.findIndex(t => t === new Date().toISOString().slice(0,10)));
+      const start = Math.max(0, fishWx.daily.time.findIndex(t => t === localYMD()));
       const view = fishWx.daily.time.map((_, i) => ({ ...scoreFishDay(fishWx, marine, i), i })).slice(start, start + 7);
       const pick = view[Math.min(sel, view.length - 1)];
       $('fishScore').textContent = pick.score;
@@ -780,6 +1266,7 @@
       $('fishBadge').className = 'badge ' + ratingClass(pick.score);
       $('fishWhy').textContent = pick.dateStr;
       renderFactors($('fishFactors'), pick.factors);
+      renderFishHourly(pick.i, marine);
       $('fishDays').innerHTML = view.map((d, idx) => `
         <div class="day ${idx === sel ? 'on' : ''}" data-i="${idx}">
           <div class="d">${d.dateStr.slice(5)}</div>
@@ -814,12 +1301,6 @@
       if (rec) selectLand(rec);
     };
     $('huntSearch').onclick = async () => {
-      try {
-        huntCoords = await geocode($('huntLoc').value);
-        $('huntLoc').value = huntCoords.label;
-        loadHunt();
-      } catch { alert('Could not find that place.'); }
-    };
       try {
         huntCoords = await geocode($('huntLoc').value);
         $('huntLoc').value = huntCoords.label;
@@ -878,7 +1359,7 @@
       pts.forEach((p, i) => {
         const key = p.lat.toFixed(2) + ',' + p.lng.toFixed(2);
         const hit = windPointCache[key];
-        if (hit && Date.now() - hit.t < 12 * 60 * 1000) out[i] = hit;
+        if (hit && Date.now() - hit.t < 45 * 60 * 1000) out[i] = hit;
         else fresh.push({ i, key, ...p });
       });
       if (fresh.length) {
@@ -909,8 +1390,8 @@
       const seq = ++windFetchSeq;
       const b = map.getBounds();
       const z = map.getZoom();
-      const cols = z >= 12 ? 5 : z >= 9 ? 6 : z >= 7 ? 7 : 8;
-      const rows = z >= 12 ? 4 : z >= 9 ? 5 : 6;
+      const cols = z >= 11 ? 4 : z >= 8 ? 5 : 6;
+      const rows = z >= 11 ? 3 : z >= 8 ? 4 : 5;
       const padLat = (b.getNorth() - b.getSouth()) * 0.07;
       const padLng = (b.getEast() - b.getWest()) * 0.07;
       const latStep = (b.getNorth() - b.getSouth() - 2 * padLat) / Math.max(1, rows - 1);
@@ -965,6 +1446,10 @@
 
     function initMap() {
       if (map) return;
+      if (typeof L === 'undefined') {
+        console.warn('Map library did not load');
+        return;
+      }
       map = L.map('map').setView([huntCoords.lat, huntCoords.lon], 13);
 
       const streets = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -1047,14 +1532,31 @@
       if (drawMode !== 'poly') return;
       if (sketch.length < 3) return alert('Click at least 3 corners, then Finish land.');
       const name = $('landName').value.trim() || ('Farm ' + (store.lands(store.session()).length + 1));
-      saveRec({ id: Date.now(), type: 'poly', name, points: sketch.map(p => [p.lat, p.lng]) });
+      saveRec({
+        id: Date.now(),
+        type: 'poly',
+        name,
+        habitat: ($('newHabitat') && $('newHabitat').value) || 'woods',
+        notes: '',
+        sightings: [],
+        points: sketch.map(p => [p.lat, p.lng])
+      });
     }
 
     function onMapClick(e) {
       if (!drawMode) return;
       if (drawMode === 'pin') {
         const name = $('landName').value.trim() || ('Stand ' + (store.lands(store.session()).length + 1));
-        saveRec({ id: Date.now(), type: 'pin', name, lat: e.latlng.lat, lon: e.latlng.lng });
+        saveRec({
+          id: Date.now(),
+          type: 'pin',
+          name,
+          habitat: ($('newHabitat') && $('newHabitat').value) || 'woods',
+          notes: '',
+          sightings: [],
+          lat: e.latlng.lat,
+          lon: e.latlng.lng
+        });
         return;
       }
       if (drawMode === 'poly') {
@@ -1080,10 +1582,90 @@
       const list = store.session() ? store.lands(store.session()) : [];
       sel.innerHTML = '<option value="">Saved spots…</option>' + list.map(rec => {
         const kind = rec.type === 'pin' ? 'Pin' : 'Farm';
-        return `<option value="${rec.id}">${kind}: ${rec.name}</option>`;
+        const hab = rec.habitat ? ' · ' + rec.habitat : '';
+        return `<option value="${rec.id}">${kind}: ${rec.name}${hab}</option>`;
       }).join('');
       if (selectedId) sel.value = String(selectedId);
+      fillFarmPick(selectedId);
     }
+
+    function updateLand(rec) {
+      const list = store.lands(store.session()).map(x => String(x.id) === String(rec.id) ? rec : x);
+      store.saveLands(store.session(), list);
+      if (selectedLand && String(selectedLand.id) === String(rec.id)) selectedLand = rec;
+      renderLands();
+      fillSavedMenu(rec.id);
+    }
+
+    function fillFarmPick(selectedId) {
+      const sel = $('farmPick');
+      if (!sel) return;
+      const list = store.session() ? store.lands(store.session()) : [];
+      sel.innerHTML = '<option value="">Choose a farm or pin…</option>' + list.map(rec =>
+        `<option value="${rec.id}">${rec.name}</option>`
+      ).join('');
+      const id = selectedId || (selectedLand && selectedLand.id);
+      if (id) { sel.value = String(id); showFarmEditor(id); }
+    }
+
+    function showFarmEditor(id) {
+      const rec = store.lands(store.session()).find(x => String(x.id) === String(id));
+      if (!rec) { $('farmEditor').style.display = 'none'; return; }
+      selectedLand = rec;
+      $('farmEditor').style.display = 'block';
+      $('farmNameEdit').value = rec.name || '';
+      $('farmHabitat').value = rec.habitat || 'woods';
+      $('farmNotes').value = rec.notes || '';
+      renderSightings(rec);
+    }
+
+    function renderSightings(rec) {
+      const list = rec.sightings || [];
+      $('sightList').innerHTML = list.length ? list.slice().reverse().map((s, idx) => {
+        const realIdx = list.length - 1 - idx;
+        return `<div class="land-item">
+          <div><strong>${s.date} ${s.time || ''}</strong>
+          <div class="tiny">${s.count || 1} deer${s.note ? ' · ' + s.note : ''}</div></div>
+          <button class="btn ghost" data-sid="${realIdx}">Delete</button>
+        </div>`;
+      }).join('') : '<p class="tiny">No sightings yet. Log date, time, and what you saw.</p>';
+      $('sightList').querySelectorAll('[data-sid]').forEach(b => {
+        b.onclick = () => {
+          rec.sightings.splice(Number(b.dataset.sid), 1);
+          updateLand(rec);
+          renderSightings(rec);
+          if (huntWx) renderHuntWeek(0);
+        };
+      });
+    }
+
+    $('farmPick').onchange = () => showFarmEditor($('farmPick').value);
+    $('saveFarmInfo').onclick = () => {
+      const rec = store.lands(store.session()).find(x => String(x.id) === $('farmPick').value);
+      if (!rec) return;
+      rec.name = $('farmNameEdit').value.trim() || rec.name;
+      rec.habitat = $('farmHabitat').value;
+      rec.notes = $('farmNotes').value;
+      updateLand(rec);
+      if (huntWx) renderHuntWeek(0);
+      alert('Farm info saved. Forecast will use this habitat.');
+    };
+    $('addSighting').onclick = () => {
+      const rec = store.lands(store.session()).find(x => String(x.id) === $('farmPick').value);
+      if (!rec) return alert('Pick a farm first.');
+      if (!$('seeDate').value) return alert('Add a date.');
+      rec.sightings = rec.sightings || [];
+      rec.sightings.push({
+        date: $('seeDate').value,
+        time: $('seeTime').value,
+        count: Number($('seeCount').value || 1),
+        note: $('seeNote').value.trim()
+      });
+      updateLand(rec);
+      renderSightings(rec);
+      $('seeNote').value = '';
+      if (huntWx) renderHuntWeek(0);
+    };
 
     function renderLands() {
       if (!map || !drawnItems) return;
@@ -1143,11 +1725,21 @@
       await loadHunt({ skipView: true });
     }
 
-    window.addEventListener('load', () => {
-      const last = localStorage.getItem('ff_last_user');
-      if (last) $('email').value = last;
-      if (store.session() && store.users()[store.session()]) enterApp();
-    });
+    function restoreSession() {
+      try {
+        const last = localStorage.getItem('ff_last_user');
+        if (last && $('email')) $('email').value = last;
+        const stay = localStorage.getItem('ff_stay') !== '0';
+        const who = store.session();
+        if (stay && who && store.users()[who]) enterApp();
+      } catch (e) {}
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', restoreSession);
+    } else {
+      restoreSession();
+    }
+    window.addEventListener('load', restoreSession);
   </script>
 </body>
 </html>
