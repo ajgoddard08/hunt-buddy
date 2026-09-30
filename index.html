@@ -951,7 +951,7 @@
       el.innerHTML = factors.map(f => `
         <div class="factor">
           <span>${f[0]}</span>
-          <div class="bar"><i style="width:${f[2]}%;background:${toneColor(f[2])}"></i></div>
+          <div class="bar"><i style="width:${f[2]}%;background:${factorBarColor(f[2])}"></i></div>
           <span class="tiny">${f[1]}</span>
         </div>`).join('');
     }
@@ -987,7 +987,7 @@
       renderFactors($('huntFactors'), pick.factors);
       renderHourly(pick.i);
       $('huntWeek').innerHTML = view.map((d, idx) => `
-        <div class="day ${ratingClass(d.score)} ${d.i === pick.i ? 'on' : ''}" data-i="${idx}">
+        <div class="day ${d.i === pick.i ? 'on' : ''}" data-i="${idx}">
           <div class="d">${d.date.toLocaleDateString(undefined,{weekday:'short', month:'numeric', day:'numeric'})}</div>
           <div class="s">${d.score}</div>
           <div class="tiny">${d.label}</div>
@@ -1022,7 +1022,7 @@
       renderFactors($('fishFactors'), pick.factors);
       renderFishHourly(pick.i, marine);
       $('fishDays').innerHTML = view.map((d, idx) => `
-        <div class="day ${ratingClass(d.score)} ${idx === sel ? 'on' : ''}" data-i="${idx}">
+        <div class="day ${idx === sel ? 'on' : ''}" data-i="${idx}">
           <div class="d">${d.dateStr.slice(5)}</div>
           <div class="s">${d.score}</div>
           <div class="tiny">${d.label}</div>
