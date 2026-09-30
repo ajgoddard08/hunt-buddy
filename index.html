@@ -169,9 +169,23 @@
       grid-template-columns: repeat(24, 1fr);
       gap: 3px;
       align-items: end;
-      height: 110px;
+      height: 96px;
       padding: 6px 2px 0;
-      border-bottom: 1px solid var(--line);
+    }
+    .hour-axis {
+      display: grid;
+      grid-template-columns: repeat(24, 1fr);
+      gap: 3px;
+      margin-top: 6px;
+      padding-top: 6px;
+      border-top: 1px solid var(--line);
+    }
+    .hour-axis span {
+      font-size: 10px;
+      color: var(--muted);
+      text-align: center;
+      line-height: 1.1;
+      min-height: 1.2em;
     }
     .h-bar {
       display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
@@ -183,13 +197,7 @@
       border-radius: 3px 3px 0 0;
       min-height: 4px;
     }
-    .h-bar small {
-      font-size: 9px; color: var(--muted); margin-top: 4px;
-      transform: rotate(-55deg); transform-origin: top left;
-      height: 0; overflow: visible;
-    }
     .h-bar.now span.col { outline: 1px solid #fff; }
-    .h-bar.prime span.col { box-shadow: 0 0 0 1px #ff6a13; }
 
     .week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; margin-top: 14px; }
     @media (max-width: 800px) {
@@ -200,13 +208,8 @@
       .row input, .row select, .row button { width: 100%; }
       .row button { min-height: 42px; }
       .factor { grid-template-columns: 1fr; gap: 4px; }
-      .hourly { height: 130px; padding-bottom: 22px; gap: 2px; }
-      .h-bar small {
-        transform: none;
-        height: auto;
-        font-size: 8px;
-        margin-top: 3px;
-      }
+      .hourly { height: 100px; padding-bottom: 0; gap: 2px; }
+      .hour-axis span { font-size: 9px; }
       #map { height: 320px; }
       .userbox #who { display: none; }
     }
@@ -220,7 +223,12 @@
       padding: 10px;
       cursor: pointer;
     }
-    .day.on { outline: 2px solid #ff6a13; }
+    .day.good { border-color: #8fbf62; }
+    .day.good .s { color: #8fbf62; }
+    .day.mid { border-color: #ff6a13; }
+    .day.mid .s { color: #ff6a13; }
+    .day.poor { border-color: #c81e1e; }
+    .day.poor .s { color: #c45a3a; }
     .day .d { font-size: 12px; color: var(--muted); }
     .day .s { font-size: 22px; font-family: Oswald, sans-serif; }
 
@@ -338,7 +346,8 @@
             <div class="hourly-wrap">
               <h3>Hourly activity</h3>
               <div class="hourly" id="huntHourly"></div>
-              <p class="tiny" id="huntHourHint" style="margin-top:18px"></p>
+              <div class="hour-axis" id="huntHourAxis"></div>
+              <p class="tiny" id="huntHourHint" style="margin-top:10px"></p>
             </div>
             <div class="factors" id="huntFactors"></div>
             <div class="week" id="huntWeek"></div>
@@ -421,6 +430,12 @@
               <div class="tiny" id="fishWhy"></div>
             </div>
           </div>
+          <div class="hourly-wrap">
+            <h3>Hourly bite</h3>
+            <div class="hourly" id="fishHourly"></div>
+            <div class="hour-axis" id="fishHourAxis"></div>
+            <p class="tiny" id="fishHourHint" style="margin-top:10px"></p>
+          </div>
           <div class="factors" id="fishFactors"></div>
           <div class="week" id="fishDays"></div>
         </div>
@@ -455,7 +470,7 @@
     let mode = 'login';
     let map, drawnItems, selectedLand = null, lastWind = { deg: 0, speed: 0 };
     let windLayer = null;
-    let huntWx = null, fishWx = null;
+    let huntWx = null, fishWx = null, lastMarine = null;
     let huntCoords = { lat: 40.043, lon: -86.158, label: 'Westfield, Indiana' };
     let fishCoords = { lat: 39.927, lon: -85.947, label: 'Geist Reservoir, Indiana' };
 
@@ -798,23 +813,12 @@
 
     function renderHourly(dayIndex) {
       const hours = scoreDeerHours(huntWx, dayIndex);
-      const nowH = new Date().getHours();
       const today = new Date().toISOString().slice(0, 10);
       const isToday = huntWx.daily.time[dayIndex] === today;
-      const peak = hours.reduce((m, h) => h.score > m.score ? h : m, hours[0] || { score: 0, label: '—' });
-      $('huntHourly').innerHTML = hours.map(h => {
-        const cls = (isToday && h.hour === nowH) ? 'now' : (h.score >= 72 ? 'prime' : '');
-        const color = h.score >= 72 ? '#ff6a13' : h.score >= 58 ? '#8fbf62' : h.score < 40 ? '#c45a32' : '#d4a24a';
-        const show = h.hour % 4 === 0;
-        return `<div class="h-bar ${cls}" title="${h.label}: ${h.score} · ${h.temp.toFixed(0)}°F · ${h.wind.toFixed(0)} mph">
-          <span class="col" style="height:${Math.max(8, h.score)}%;background:${color}"></span>
-          <small>${show ? h.label : ''}</small>
-        </div>`;
-      }).join('');
-      $('huntHourHint').textContent = peak
-        ? ('Best window this day looks like ' + peak.label + ' (' + peak.score + ').' +
-          (selectedLand ? ' Includes ' + (selectedLand.habitat || 'woods') + ' and your sighting times.' : ''))
-        : '';
+      paintHourly(hours, 'huntHourly', 'huntHourAxis', 'huntHourHint', isToday);
+      if (selectedLand) {
+        $('huntHourHint').textContent += ' Includes ' + (selectedLand.habitat || 'woods') + ' and your sighting times.';
+      }
     }
 
     function scoreFishDay(wx, marine, dayIndex) {
@@ -873,18 +877,81 @@
       return { score, label, factors, water, wind, pTrend, dateStr };
     }
 
+    function scoreFishHours(wx, marine, dayIndex) {
+      const dateStr = wx.daily.time[dayIndex];
+      const hours = [];
+      wx.hourly.time.forEach((t, i) => {
+        if (!t.startsWith(dateStr)) return;
+        const hour = parseInt(t.slice(11, 13), 10);
+        const wind = wx.hourly.wind_speed_10m[i];
+        const rain = wx.hourly.precipitation[i] || 0;
+        const cloud = wx.hourly.cloud_cover[i] || 0;
+        const press = wx.hourly.pressure_msl[i];
+        const prevP = i > 3 ? wx.hourly.pressure_msl[i - 3] : press;
+        const temp = wx.hourly.temperature_2m[i];
+        let water = temp - 4;
+        if (marine && marine.hourly && marine.hourly.sea_surface_temperature) {
+          const mi = marine.hourly.time.indexOf(t);
+          if (mi >= 0) water = marine.hourly.sea_surface_temperature[mi];
+        } else if (wx.hourly.soil_temperature_0cm) water = wx.hourly.soil_temperature_0cm[i] ?? water;
+        let score = 42;
+        if (hour >= 5 && hour <= 8) score += 14;
+        else if (hour >= 17 && hour <= 20) score += 16;
+        else if (hour >= 11 && hour <= 15) score += 6;
+        else if (hour >= 22 || hour <= 4) score -= 4;
+        if (press - prevP < -0.6) score += 14;
+        else if (press - prevP > 1.2) score -= 8;
+        if (cloud >= 60) score += 8;
+        else if (cloud <= 20) score -= 4;
+        if (wind >= 5 && wind <= 15) score += 8;
+        else if (wind > 22) score -= 10;
+        if (water >= 48 && water <= 72) score += 8;
+        else if (water < 42) score -= 8;
+        if (rain > 0.2) score -= 8;
+        score = Math.max(8, Math.min(98, Math.round(score)));
+        hours.push({ t, hour, label: hourLabel(t), score });
+      });
+      return hours;
+    }
+
+    function renderFishHourly(dayIndex, marine) {
+      const hours = scoreFishHours(fishWx, marine || lastMarine, dayIndex);
+      const today = new Date().toISOString().slice(0, 10);
+      paintHourly(hours, 'fishHourly', 'fishHourAxis', 'fishHourHint', fishWx.daily.time[dayIndex] === today);
+    }
+
     function ratingClass(score) {
-      if (score >= 72) return 'good';
-      if (score >= 58) return 'mid';
-      if (score < 40) return 'poor';
-      return '';
+      if (score >= 58) return 'good';
+      if (score >= 40) return 'mid';
+      return 'poor';
+    }
+    function toneColor(score) {
+      if (score >= 58) return '#8fbf62';
+      if (score >= 40) return '#ff6a13';
+      return '#c81e1e';
+    }
+    function paintHourly(hours, barId, axisId, hintId, isToday) {
+      const nowH = new Date().getHours();
+      const peak = hours.reduce((m, h) => h.score > m.score ? h : m, hours[0] || { score: 0, label: '—' });
+      $(barId).innerHTML = hours.map(h => {
+        const cls = (isToday && h.hour === nowH) ? 'now' : '';
+        return `<div class="h-bar ${cls}" title="${h.label}: ${h.score}">
+          <span class="col" style="height:${Math.max(8, h.score)}%;background:${toneColor(h.score)}"></span>
+        </div>`;
+      }).join('');
+      $(axisId).innerHTML = hours.map(h =>
+        `<span>${(h.hour % 3 === 0) ? h.label : ''}</span>`
+      ).join('');
+      if (hintId && peak) {
+        $(hintId).textContent = 'Best window this day looks like ' + peak.label + ' (' + peak.score + '). Green good · orange okay · red slow.';
+      }
     }
 
     function renderFactors(el, factors) {
       el.innerHTML = factors.map(f => `
         <div class="factor">
           <span>${f[0]}</span>
-          <div class="bar"><i style="width:${f[2]}%"></i></div>
+          <div class="bar"><i style="width:${f[2]}%;background:${toneColor(f[2])}"></i></div>
           <span class="tiny">${f[1]}</span>
         </div>`).join('');
     }
@@ -920,7 +987,7 @@
       renderFactors($('huntFactors'), pick.factors);
       renderHourly(pick.i);
       $('huntWeek').innerHTML = view.map((d, idx) => `
-        <div class="day ${d.i === pick.i ? 'on' : ''}" data-i="${idx}">
+        <div class="day ${ratingClass(d.score)} ${d.i === pick.i ? 'on' : ''}" data-i="${idx}">
           <div class="d">${d.date.toLocaleDateString(undefined,{weekday:'short', month:'numeric', day:'numeric'})}</div>
           <div class="s">${d.score}</div>
           <div class="tiny">${d.label}</div>
@@ -934,11 +1001,11 @@
       $('fishMeta').textContent = 'Loading forecast for ' + fishCoords.label + '…';
       try {
         fishWx = await fetchWx(fishCoords.lat, fishCoords.lon);
-        const marine = await fetchMarine(fishCoords.lat, fishCoords.lon);
+        lastMarine = await fetchMarine(fishCoords.lat, fishCoords.lon);
         $('fishMeta').textContent = fishCoords.label + ' · air ' + fishWx.current.temperature_2m + '°F · pressure ' +
           hPaToInHg(fishWx.current.pressure_msl).toFixed(2) + ' inHg · updated ' +
           new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-        renderFishDays(0, marine);
+        renderFishDays(0, lastMarine);
       } catch {
         $('fishMeta').textContent = 'Could not load fishing weather.';
       }
@@ -953,8 +1020,9 @@
       $('fishBadge').className = 'badge ' + ratingClass(pick.score);
       $('fishWhy').textContent = pick.dateStr;
       renderFactors($('fishFactors'), pick.factors);
+      renderFishHourly(pick.i, marine);
       $('fishDays').innerHTML = view.map((d, idx) => `
-        <div class="day ${idx === sel ? 'on' : ''}" data-i="${idx}">
+        <div class="day ${ratingClass(d.score)} ${idx === sel ? 'on' : ''}" data-i="${idx}">
           <div class="d">${d.dateStr.slice(5)}</div>
           <div class="s">${d.score}</div>
           <div class="tiny">${d.label}</div>
