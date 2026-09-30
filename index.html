@@ -252,6 +252,7 @@
         <input id="password" type="password" required minlength="4" autocomplete="current-password" />
         <p class="hint" id="authErr" style="color:#ff8a3d;display:none"></p>
         <button class="btn full" type="submit" id="authBtn">Log in</button>
+        <button class="btn ghost full" type="button" id="guestBtn">Enter as guest</button>
       </form>
       <div class="switch">
         <span id="toggleAuth">Need an account? <a id="modeLink">Create one</a></span>
@@ -417,6 +418,12 @@
       localStorage.setItem('ff_last_user', email);
       enterApp();
     };
+    $('guestBtn').onclick = () => {
+      seedDemo();
+      store.setSession('buddy');
+      localStorage.setItem('ff_last_user', 'buddy');
+      enterApp();
+    };
 
     $('logout').onclick = () => { store.clearSession(); location.reload(); };
 
@@ -432,13 +439,18 @@
     });
 
     function enterApp() {
-      $('auth').style.display = 'none';
-      $('app').style.display = 'block';
-      $('who').textContent = store.session();
-      initMap();
-      renderLands();
-      loadHunt();
-      startAutoRefresh();
+      try {
+        $('auth').style.display = 'none';
+        $('app').style.display = 'block';
+        $('who').textContent = store.session() || 'guest';
+        try { initMap(); } catch (e) { console.warn(e); }
+        try { renderLands(); } catch (e) { console.warn(e); }
+        try { fillSavedMenu(); } catch (e) {}
+        loadHunt();
+        startAutoRefresh();
+      } catch (e) {
+        alert('Logged in, but part of the page failed to load. Refresh and try again.');
+      }
     }
 
     async function geocode(q) {
@@ -965,6 +977,10 @@
 
     function initMap() {
       if (map) return;
+      if (typeof L === 'undefined') {
+        console.warn('Map library did not load');
+        return;
+      }
       map = L.map('map').setView([huntCoords.lat, huntCoords.lon], 13);
 
       const streets = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
