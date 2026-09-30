@@ -1,0 +1,1153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Hunt Buddy — Hunting & Fishing Forecasts</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Oswald:wght@500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #12180f;
+      --panel: #1a2416;
+      --panel2: #24301c;
+      --line: #3d4f2e;
+      --text: #f3f0e6;
+      --muted: #b7c4a4;
+      --gold: #ff6a13;
+      --amber: #ff8a3d;
+      --good: #8fbf62;
+      --mid: #e09a3e;
+      --poor: #c45a32;
+      --accent: #e85d04;
+      --camo1: #2f4a28;
+      --camo2: #4a5d32;
+      --camo3: #1e2e18;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      font-family: Barlow, system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    h1, h2, h3, .brand { font-family: Oswald, sans-serif; letter-spacing: .04em; }
+
+    /* AUTH */
+    #auth {
+      min-height: 100%;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background:
+        radial-gradient(900px 500px at 15% 10%, rgba(255,106,19,.18), transparent 45%),
+        radial-gradient(1200px 600px at 80% -10%, #2f4a28 0%, transparent 50%),
+        linear-gradient(180deg, #141c10, #0c120a);
+    }
+    .auth-card {
+      width: min(420px, 100%);
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 28px 24px;
+    }
+    .brand-row { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+    .mark {
+      width: 40px; height: 40px; border-radius: 10px;
+      background: linear-gradient(145deg, #ff6a13, #c44a08);
+      color: #1a1408;
+      font-weight: 700;
+      display: grid; place-items: center; font-size: 20px;
+    }
+    .auth-card p.lead { color: var(--muted); margin: 8px 0 20px; font-size: 14px; }
+    label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 6px; text-transform: uppercase; letter-spacing: .08em; }
+    input, select, button, textarea {
+      font: inherit; color: var(--text);
+    }
+    input, select, textarea {
+      width: 100%;
+      background: #141c10;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 11px 12px;
+    }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      background: var(--accent);
+      border: 0; border-radius: 10px;
+      padding: 11px 16px;
+      cursor: pointer; font-weight: 600;
+    }
+    .btn.full { width: 100%; margin-top: 16px; }
+    .btn.ghost { background: transparent; border: 1px solid var(--line); }
+    .btn { color: #1a1408; }
+    .btn.ghost { color: var(--text); }
+    .btn.gold { background: var(--gold); color: #1a1404; }
+    .switch { text-align: center; margin-top: 14px; color: var(--muted); font-size: 14px; }
+    .switch a { color: var(--amber); cursor: pointer; }
+    .hint { font-size: 12px; color: var(--muted); margin-top: 10px; }
+
+    /* APP SHELL */
+    #app { display: none; min-height: 100%; }
+    header.appbar {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; padding: 12px 18px;
+      border-bottom: 1px solid var(--line);
+      background: #172015;
+      position: sticky; top: 0; z-index: 20;
+    }
+    nav.tabs { display: flex; gap: 8px; }
+    nav.tabs button {
+      background: transparent; border: 1px solid transparent;
+      padding: 8px 14px; border-radius: 999px; cursor: pointer;
+      color: var(--muted);
+    }
+    nav.tabs button.active {
+      color: #1a1408; border-color: #ff6a13; background: #ff6a13;
+    }
+    .userbox { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 14px; }
+    main { padding: 18px; max-width: 1200px; margin: 0 auto; }
+    .page { display: none; }
+    .page.show { display: block; }
+
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 16px;
+    }
+    .card h2 { font-size: 20px; margin-bottom: 10px; }
+    .muted { color: var(--muted); }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+    .score {
+      display: flex; align-items: baseline; gap: 10px;
+    }
+    .score b { font-size: 42px; font-family: Oswald, sans-serif; }
+    .badge {
+      font-size: 12px; padding: 4px 8px; border-radius: 999px;
+      background: #243326; color: var(--muted);
+    }
+    .badge.good { background: #1d3a24; color: var(--good); }
+    .badge.mid { background: #3a3018; color: var(--mid); }
+    .badge.poor { background: #3a2018; color: var(--poor); }
+
+    .factors { display: grid; gap: 8px; margin-top: 12px; }
+    .factor {
+      display: grid; grid-template-columns: 110px 1fr auto;
+      gap: 8px; align-items: center;
+      font-size: 14px;
+    }
+    .bar { height: 8px; background: #243326; border-radius: 99px; overflow: hidden; }
+    .bar > i { display: block; height: 100%; background: var(--good); }
+
+    .hourly-wrap { margin-top: 16px; }
+    .hourly-wrap h3 { font-size: 14px; font-weight: 600; margin-bottom: 8px; letter-spacing: .04em; }
+    .hourly {
+      display: grid;
+      grid-template-columns: repeat(24, 1fr);
+      gap: 3px;
+      align-items: end;
+      height: 110px;
+      padding: 6px 2px 0;
+      border-bottom: 1px solid var(--line);
+    }
+    .h-bar {
+      display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+      height: 100%;
+      min-width: 0;
+    }
+    .h-bar span.col {
+      width: 100%;
+      border-radius: 3px 3px 0 0;
+      min-height: 4px;
+    }
+    .h-bar small {
+      font-size: 9px; color: var(--muted); margin-top: 4px;
+      transform: rotate(-55deg); transform-origin: top left;
+      height: 0; overflow: visible;
+    }
+    .h-bar.now span.col { outline: 1px solid #fff; }
+    .h-bar.prime span.col { box-shadow: 0 0 0 1px #ff6a13; }
+
+    .week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; margin-top: 14px; }
+    @media (max-width: 800px) { .week { grid-template-columns: 1fr 1fr; } }
+    .day {
+      background: var(--panel2);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px;
+      cursor: pointer;
+    }
+    .day.on { outline: 2px solid #ff6a13; }
+    .day .d { font-size: 12px; color: var(--muted); }
+    .day .s { font-size: 22px; font-family: Oswald, sans-serif; }
+
+    #map { height: 420px; border-radius: 12px; border: 1px solid var(--line); }
+    .land-list { margin-top: 12px; display: grid; gap: 8px; }
+    .land-item {
+      display: flex; justify-content: space-between; align-items: center;
+      background: var(--panel2); border: 1px solid var(--line);
+      border-radius: 10px; padding: 8px 10px;
+    }
+    .wind-compass {
+      width: 86px; height: 86px; border-radius: 50%;
+      border: 2px solid var(--line);
+      position: relative; margin: 8px auto 0;
+      background: #101810;
+    }
+    .wind-compass .arrow {
+      position: absolute; left: 50%; top: 8px;
+      width: 0; height: 0;
+      border-left: 8px solid transparent;
+      border-right: 8px solid transparent;
+      border-bottom: 34px solid #ff6a13;
+      transform-origin: 50% 34px;
+      margin-left: -8px;
+    }
+    .tiny { font-size: 12px; color: var(--muted); }
+    .wind-pin {
+      width: 54px; height: 54px;
+      display: grid; place-items: center;
+    }
+    .wind-pin .shaft {
+      width: 0; height: 0;
+      border-left: 10px solid transparent;
+      border-right: 10px solid transparent;
+      border-bottom: 36px solid #ff6a13;
+      filter: drop-shadow(0 1px 2px rgba(0,0,0,.7));
+    }
+    .leaflet-control-layers {
+      background: #1a2416 !important;
+      color: #f3f0e6 !important;
+      border: 1px solid #3d4f2e !important;
+    }
+    .leaflet-control-layers label { color: #f3f0e6; text-transform: none; letter-spacing: 0; margin: 0; }
+
+    footer.note {
+      margin-top: 18px; font-size: 12px; color: #7e927c;
+    }
+  </style>
+</head>
+<body>
+  <section id="auth">
+    <div class="auth-card">
+      <div class="brand-row">
+        <div class="mark">◆</div>
+        <div>
+          <div class="brand" style="font-size:22px">HUNT BUDDY</div>
+          <div class="tiny">Deer weeks · Daily bite windows</div>
+        </div>
+      </div>
+      <p class="lead" id="authLead">Sign in to save hunting land and pull live forecasts.</p>
+      <form id="authForm">
+        <label>Username</label>
+        <input id="email" type="text" required placeholder="your name or email" autocomplete="username" />
+        <label>Password</label>
+        <input id="password" type="password" required minlength="4" autocomplete="current-password" />
+        <p class="hint" id="authErr" style="color:#ff8a3d;display:none"></p>
+        <button class="btn full" type="submit" id="authBtn">Log in</button>
+      </form>
+      <div class="switch">
+        <span id="toggleAuth">Need an account? <a id="modeLink">Create one</a></span>
+      </div>
+      <p class="hint">Create an account once, then Log in keeps working on this device. Demo login: buddy / huntbuddy</p>
+    </div>
+  </section>
+
+  <section id="app">
+    <header class="appbar">
+      <div class="brand-row">
+        <div class="mark">◆</div>
+        <div class="brand">HUNT BUDDY</div>
+      </div>
+      <nav class="tabs">
+        <button class="active" data-page="hunt">Hunting</button>
+        <button data-page="fish">Fishing</button>
+      </nav>
+      <div class="userbox">
+        <span id="who"></span>
+        <button class="btn ghost" id="logout">Log out</button>
+      </div>
+    </header>
+    <main>
+      <section id="hunt" class="page show">
+        <div class="grid-2">
+          <div class="card">
+            <h2>Weekly deer forecast</h2>
+            <div class="row">
+              <input id="huntLoc" placeholder="City or lat,lon" value="Westfield, Indiana" />
+              <select id="huntSaved" style="width:auto;min-width:160px">
+                <option value="">Saved spots…</option>
+              </select>
+              <button class="btn" id="huntSearch">Set location</button>
+              <button class="btn ghost" id="huntHere">My location</button>
+            </div>
+            <p class="tiny" id="huntMeta" style="margin:8px 0 0">Loading weather…</p>
+            <div class="score" style="margin-top:12px">
+              <b id="huntScore">—</b>
+              <div>
+                <div class="badge" id="huntBadge">—</div>
+                <div class="tiny" id="huntWhy"></div>
+              </div>
+            </div>
+            <div class="hourly-wrap">
+              <h3>Hourly activity</h3>
+              <div class="hourly" id="huntHourly"></div>
+              <p class="tiny" id="huntHourHint" style="margin-top:18px"></p>
+            </div>
+            <div class="factors" id="huntFactors"></div>
+            <div class="week" id="huntWeek"></div>
+          </div>
+          <div class="card">
+            <h2>Your land & wind</h2>
+            <p class="tiny">Drop a named pin or click 3+ corners to outline a farm. Finish to save. Little arrows cover the map and show drift. Color = wind speed.</p>
+            <div class="row" style="margin:10px 0">
+              <input id="landName" placeholder="Stand or farm name" />
+              <button class="btn gold" id="startPin">Drop pin</button>
+              <button class="btn gold" id="startDraw">Outline land</button>
+              <button class="btn" id="finishDraw">Finish land</button>
+              <button class="btn ghost" id="clearDraw">Cancel</button>
+            </div>
+            <div id="map"></div>
+            <div class="wind-compass"><div class="arrow" id="windArrow"></div></div>
+            <p class="tiny" style="text-align:center" id="windLabel">Wind —</p>
+            <p class="tiny" style="text-align:center">Wind color: <span style="color:#7ec8ff">calm</span> · <span style="color:#8fbf62">easy</span> · <span style="color:#ff6a13">prime</span> · <span style="color:#e24a12">strong</span> · <span style="color:#c81e1e">blown</span></p>
+            <div class="land-list" id="landList"></div>
+          </div>
+        </div>
+        <p class="footer note">Forecast score is a field guide, not a guarantee. Built from temperature change, cold-front timing, pressure trend, wind speed/direction, and moon phase. Weather: Open-Meteo.</p>
+      </section>
+
+      <section id="fish" class="page">
+        <div class="card">
+          <h2>Daily fishing forecast</h2>
+          <div class="row">
+            <input id="fishLoc" placeholder="Lake, city, or lat,lon" value="Geist Reservoir, Indiana" />
+            <button class="btn" id="fishSearch">Set water</button>
+            <button class="btn ghost" id="fishHere">My location</button>
+          </div>
+          <p class="tiny" id="fishMeta" style="margin:8px 0 12px">Loading…</p>
+          <div class="score">
+            <b id="fishScore">—</b>
+            <div>
+              <div class="badge" id="fishBadge">—</div>
+              <div class="tiny" id="fishWhy"></div>
+            </div>
+          </div>
+          <div class="factors" id="fishFactors"></div>
+          <div class="week" id="fishDays"></div>
+        </div>
+        <p class="footer note">Bite rating weights pressure trend (falling often better), cloud cover, wind, and water/air temperature. Inland lakes use nearby air + soil/marine temperature as a stand-in for water temp.</p>
+      </section>
+    </main>
+  </section>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const store = {
+      users() { return JSON.parse(localStorage.getItem('ff_users') || '{}'); },
+      saveUsers(u) { localStorage.setItem('ff_users', JSON.stringify(u)); },
+      session() { return localStorage.getItem('ff_session'); },
+      setSession(e) { localStorage.setItem('ff_session', e); },
+      clearSession() { localStorage.removeItem('ff_session'); },
+      lands(email) { return JSON.parse(localStorage.getItem('ff_lands_' + email) || '[]'); },
+      saveLands(email, list) { localStorage.setItem('ff_lands_' + email, JSON.stringify(list)); }
+    };
+
+    function seedDemo() {
+      const users = store.users();
+      if (!users['buddy']) {
+        users['buddy'] = { pass: 'huntbuddy', created: Date.now() };
+        store.saveUsers(users);
+      }
+    }
+    seedDemo();
+
+    let mode = 'login';
+    let map, drawnItems, selectedLand = null, lastWind = { deg: 0, speed: 0 };
+    let windLayer = null;
+    let huntWx = null, fishWx = null;
+    let huntCoords = { lat: 40.043, lon: -86.158, label: 'Westfield, Indiana' };
+    let fishCoords = { lat: 39.927, lon: -85.947, label: 'Geist Reservoir, Indiana' };
+
+    function setAuthMode(next) {
+      mode = next;
+      $('authErr').style.display = 'none';
+      $('authBtn').textContent = mode === 'login' ? 'Log in' : 'Create account';
+      $('authLead').textContent = mode === 'login'
+        ? 'Sign in with the account you created. You stay logged in on this device.'
+        : 'Pick a username and password. After you create it, you are logged in automatically.';
+      $('toggleAuth').innerHTML = mode === 'login'
+        ? 'Need an account? <a id="modeLink">Create one</a>'
+        : 'Have an account? <a id="modeLink">Log in</a>';
+      $('modeLink').onclick = () => setAuthMode(mode === 'login' ? 'signup' : 'login');
+    }
+    $('modeLink').onclick = () => setAuthMode(mode === 'login' ? 'signup' : 'login');
+
+    $('authForm').onsubmit = (e) => {
+      e.preventDefault();
+      const email = $('email').value.trim().toLowerCase();
+      const pass = $('password').value;
+      const err = (msg) => { $('authErr').style.display = 'block'; $('authErr').textContent = msg; };
+      if (!email || pass.length < 4) return err('Username required. Password must be at least 4 characters.');
+      const users = store.users();
+      if (mode === 'signup') {
+        if (users[email]) {
+          setAuthMode('login');
+          return err('That account already exists. Log in with the same password.');
+        }
+        users[email] = { pass, created: Date.now() };
+        store.saveUsers(users);
+      } else {
+        if (!users[email]) {
+          setAuthMode('signup');
+          return err('No account with that name yet. Create one, then you can log in anytime.');
+        }
+        if (users[email].pass !== pass) return err('Wrong password for that account.');
+      }
+      store.setSession(email);
+      localStorage.setItem('ff_last_user', email);
+      enterApp();
+    };
+
+    $('logout').onclick = () => { store.clearSession(); location.reload(); };
+
+    document.querySelectorAll('nav.tabs button').forEach(btn => {
+      btn.onclick = () => {
+        document.querySelectorAll('nav.tabs button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        document.querySelectorAll('.page').forEach(p => p.classList.remove('show'));
+        $(btn.dataset.page).classList.add('show');
+        if (btn.dataset.page === 'hunt' && map) setTimeout(() => map.invalidateSize(), 50);
+        if (btn.dataset.page === 'fish' && !fishWx) loadFish();
+      };
+    });
+
+    function enterApp() {
+      $('auth').style.display = 'none';
+      $('app').style.display = 'block';
+      $('who').textContent = store.session();
+      initMap();
+      renderLands();
+      loadHunt();
+      startAutoRefresh();
+    }
+
+    async function geocode(q) {
+      if (/^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$/.test(q)) {
+        const [lat, lon] = q.split(',').map(Number);
+        return { lat, lon, label: q };
+      }
+      const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=1&language=en&format=json`;
+      const r = await fetch(url);
+      const j = await r.json();
+      if (!j.results || !j.results.length) throw new Error('Place not found');
+      const p = j.results[0];
+      return { lat: p.latitude, lon: p.longitude, label: `${p.name}${p.admin1 ? ', ' + p.admin1 : ''}` };
+    }
+
+    async function fetchWx(lat, lon) {
+      const params = new URLSearchParams({
+        latitude: lat, longitude: lon,
+        current: 'temperature_2m,apparent_temperature,precipitation,weather_code,cloud_cover,pressure_msl,wind_speed_10m,wind_direction_10m,wind_gusts_10m',
+        hourly: 'temperature_2m,precipitation,cloud_cover,pressure_msl,wind_speed_10m,wind_direction_10m,wind_gusts_10m,soil_temperature_0cm',
+        daily: 'weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,precipitation_sum,wind_speed_10m_max,wind_direction_10m_dominant,et0_fao_evapotranspiration',
+        temperature_unit: 'fahrenheit',
+        wind_speed_unit: 'mph',
+        precipitation_unit: 'inch',
+        timezone: 'auto',
+        forecast_days: '7',
+        past_days: '2'
+      });
+      const r = await fetch('https://api.open-meteo.com/v1/forecast?' + params);
+      if (!r.ok) throw new Error('Weather request failed');
+      return r.json();
+    }
+
+    async function fetchMarine(lat, lon) {
+      try {
+        const params = new URLSearchParams({
+          latitude: lat, longitude: lon,
+          hourly: 'sea_surface_temperature',
+          temperature_unit: 'fahrenheit',
+          timezone: 'auto',
+          forecast_days: '7'
+        });
+        const r = await fetch('https://marine-api.open-meteo.com/v1/marine?' + params);
+        if (!r.ok) return null;
+        return r.json();
+      } catch { return null; }
+    }
+
+    function moonPhase(date) {
+      const lp = 2551443;
+      const newMoon = new Date(1970, 0, 7, 3, 44).getTime() / 1000;
+      const phase = ((date.getTime() / 1000) - newMoon) % lp;
+      const age = phase / 86400;
+      const illum = 0.5 * (1 - Math.cos(2 * Math.PI * age / 29.53));
+      let name = 'Waxing';
+      if (age < 1.8) name = 'New';
+      else if (age < 6.5) name = 'Waxing crescent';
+      else if (age < 8.5) name = 'First quarter';
+      else if (age < 13.5) name = 'Waxing gibbous';
+      else if (age < 16.5) name = 'Full';
+      else if (age < 21.5) name = 'Waning gibbous';
+      else if (age < 23.5) name = 'Last quarter';
+      else if (age < 28) name = 'Waning crescent';
+      else name = 'New';
+      return { age, illum, name };
+    }
+
+    function dirName(deg) {
+      const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+      return dirs[Math.round(((deg % 360) / 22.5)) % 16];
+    }
+
+    function hPaToInHg(h) { return h * 0.02953; }
+
+    function scoreDeerDay(wx, dayIndex) {
+      const daily = wx.daily;
+      const hourly = wx.hourly;
+      const date = new Date(daily.time[dayIndex] + 'T12:00');
+      const max = daily.temperature_2m_max[dayIndex];
+      const min = daily.temperature_2m_min[dayIndex];
+      const wind = daily.wind_speed_10m_max[dayIndex];
+      const wdir = daily.wind_direction_10m_dominant[dayIndex];
+      const rain = daily.precipitation_sum[dayIndex];
+      const prevMax = dayIndex > 0 ? daily.temperature_2m_max[dayIndex - 1] : max;
+      const drop = prevMax - max;
+
+      // pressure around midday of that day
+      let pToday = null, pYest = null;
+      hourly.time.forEach((t, i) => {
+        if (t.startsWith(daily.time[dayIndex]) && t.endsWith('12:00')) pToday = hourly.pressure_msl[i];
+        if (dayIndex > 0 && t.startsWith(daily.time[dayIndex - 1]) && t.endsWith('12:00')) pYest = hourly.pressure_msl[i];
+      });
+      const pTrend = (pToday && pYest) ? pToday - pYest : 0;
+
+      let score = 45;
+      const factors = [];
+
+      // temperature / cold front
+      let tempPts = 8;
+      if (drop >= 12) { tempPts = 24; factors.push(['Cold drop', drop.toFixed(0) + '°F cooler', 90]); }
+      else if (drop >= 7) { tempPts = 18; factors.push(['Cooling', drop.toFixed(0) + '°F drop', 75]); }
+      else if (drop >= 3) { tempPts = 12; factors.push(['Slight cool-down', drop.toFixed(0) + '°F', 55]); }
+      else if (drop <= -6) { tempPts = 4; factors.push(['Warming trend', Math.abs(drop).toFixed(0) + '°F up', 25]); }
+      else factors.push(['Stable temps', max.toFixed(0) + '° / ' + min.toFixed(0) + '°', 45]);
+      score += tempPts;
+
+      if (max <= 52) { score += 8; factors.push(['Cool high', max.toFixed(0) + '°F', 80]); }
+      else if (max >= 72) { score -= 8; factors.push(['Warm high', max.toFixed(0) + '°F', 25]); }
+      else factors.push(['High temp', max.toFixed(0) + '°F', 50]);
+
+      // pressure
+      if (pTrend > 2) { score += 10; factors.push(['Rising pressure', '+' + pTrend.toFixed(1) + ' hPa', 80]); }
+      else if (pTrend < -2) { score += 4; factors.push(['Falling pressure', pTrend.toFixed(1) + ' hPa', 50]); }
+      else factors.push(['Steady pressure', pToday ? hPaToInHg(pToday).toFixed(2) + ' inHg' : '—', 55]);
+
+      // wind
+      if (wind >= 4 && wind <= 12) { score += 10; factors.push(['Wind sweet spot', wind.toFixed(0) + ' mph ' + dirName(wdir), 85]); }
+      else if (wind > 20) { score -= 10; factors.push(['Hard wind', wind.toFixed(0) + ' mph ' + dirName(wdir), 20]); }
+      else if (wind < 3) { score -= 4; factors.push(['Near calm', wind.toFixed(0) + ' mph', 35]); }
+      else factors.push(['Wind', wind.toFixed(0) + ' mph ' + dirName(wdir), 55]);
+
+      if (rain > 0.4) { score -= 8; factors.push(['Rain', rain.toFixed(2) + ' in', 25]); }
+      else if (rain > 0.05) { score += 2; factors.push(['Light precip', rain.toFixed(2) + ' in', 55]); }
+
+      const moon = moonPhase(date);
+      if (moon.name === 'New' || moon.name === 'Full') { score += 3; factors.push(['Moon', moon.name, 60]); }
+      else factors.push(['Moon', moon.name, 45]);
+
+      score = Math.max(8, Math.min(98, Math.round(score)));
+      let label = 'Fair';
+      if (score >= 72) label = 'Prime sit';
+      else if (score >= 58) label = 'Good movement';
+      else if (score < 40) label = 'Slow';
+      return { score, label, factors, max, min, wind, wdir, rain, moon, drop, date };
+    }
+
+    function hourLabel(iso) {
+      const h = parseInt(iso.slice(11, 13), 10);
+      if (h === 0) return '12a';
+      if (h === 12) return '12p';
+      return h < 12 ? h + 'a' : (h - 12) + 'p';
+    }
+
+    function scoreDeerHours(wx, dayIndex) {
+      const dateStr = wx.daily.time[dayIndex];
+      const rise = wx.daily.sunrise ? new Date(wx.daily.sunrise[dayIndex]) : null;
+      const set = wx.daily.sunset ? new Date(wx.daily.sunset[dayIndex]) : null;
+      const hours = [];
+      wx.hourly.time.forEach((t, i) => {
+        if (!t.startsWith(dateStr)) return;
+        const temp = wx.hourly.temperature_2m[i];
+        const wind = wx.hourly.wind_speed_10m[i];
+        const rain = wx.hourly.precipitation[i] || 0;
+        const press = wx.hourly.pressure_msl[i];
+        const prevP = i > 3 ? wx.hourly.pressure_msl[i - 3] : press;
+        const hour = parseInt(t.slice(11, 13), 10);
+        const when = new Date(t);
+        let score = 38;
+        if (rise && set) {
+          const fromRise = (when - rise) / 3600000;
+          const toSet = (set - when) / 3600000;
+          if (fromRise >= -0.75 && fromRise <= 2.2) score += 28;
+          else if (toSet >= -0.5 && toSet <= 1.8) score += 30;
+          else if (hour >= 10 && hour <= 14) score -= 8;
+          else if (hour >= 22 || hour <= 4) score += 4;
+        } else {
+          if (hour >= 5 && hour <= 8) score += 26;
+          else if (hour >= 16 && hour <= 19) score += 28;
+          else if (hour >= 10 && hour <= 14) score -= 8;
+        }
+        if (temp <= 45) score += 10;
+        else if (temp <= 55) score += 6;
+        else if (temp >= 72) score -= 10;
+        if (wind >= 4 && wind <= 12) score += 10;
+        else if (wind > 20) score -= 12;
+        else if (wind < 3) score -= 4;
+        if (rain > 0.15) score -= 14;
+        else if (rain > 0.02) score -= 4;
+        if (press - prevP > 1) score += 6;
+        score = Math.max(8, Math.min(98, Math.round(score)));
+        hours.push({ t, hour, label: hourLabel(t), score, temp, wind, rain });
+      });
+      return hours;
+    }
+
+    function renderHourly(dayIndex) {
+      const hours = scoreDeerHours(huntWx, dayIndex);
+      const nowH = new Date().getHours();
+      const today = new Date().toISOString().slice(0, 10);
+      const isToday = huntWx.daily.time[dayIndex] === today;
+      const peak = hours.reduce((m, h) => h.score > m.score ? h : m, hours[0] || { score: 0, label: '—' });
+      $('huntHourly').innerHTML = hours.map(h => {
+        const cls = (isToday && h.hour === nowH) ? 'now' : (h.score >= 72 ? 'prime' : '');
+        const color = h.score >= 72 ? '#ff6a13' : h.score >= 58 ? '#8fbf62' : h.score < 40 ? '#c45a32' : '#d4a24a';
+        const show = h.hour % 3 === 0;
+        return `<div class="h-bar ${cls}" title="${h.label}: ${h.score} · ${h.temp.toFixed(0)}°F · ${h.wind.toFixed(0)} mph">
+          <span class="col" style="height:${Math.max(8, h.score)}%;background:${color}"></span>
+          <small>${show ? h.label : ''}</small>
+        </div>`;
+      }).join('');
+      $('huntHourHint').textContent = peak
+        ? ('Best window this day looks like ' + peak.label + ' (' + peak.score + '). Orange bars are prime hours.')
+        : '';
+    }
+
+    function scoreFishDay(wx, marine, dayIndex) {
+      const daily = wx.daily;
+      const hourly = wx.hourly;
+      const dateStr = daily.time[dayIndex];
+      const max = daily.temperature_2m_max[dayIndex];
+      const wind = daily.wind_speed_10m_max[dayIndex];
+      const rain = daily.precipitation_sum[dayIndex];
+
+      let pToday = null, pYest = null, cloud = 50, soil = null;
+      hourly.time.forEach((t, i) => {
+        if (t.startsWith(dateStr) && t.endsWith('12:00')) {
+          pToday = hourly.pressure_msl[i];
+          cloud = hourly.cloud_cover[i];
+          soil = hourly.soil_temperature_0cm ? hourly.soil_temperature_0cm[i] : null;
+        }
+        if (dayIndex > 0 && t.startsWith(daily.time[dayIndex - 1]) && t.endsWith('12:00')) pYest = hourly.pressure_msl[i];
+      });
+      const pTrend = (pToday && pYest) ? pToday - pYest : 0;
+
+      let sst = null;
+      if (marine && marine.hourly && marine.hourly.sea_surface_temperature) {
+        const i = marine.hourly.time.findIndex(t => t.startsWith(dateStr) && t.includes('12:00'));
+        if (i >= 0) sst = marine.hourly.sea_surface_temperature[i];
+      }
+      const water = sst ?? soil ?? (max - 4);
+
+      let score = 48;
+      const factors = [];
+
+      if (pTrend < -1.5) { score += 16; factors.push(['Falling pressure', pTrend.toFixed(1) + ' hPa', 88]); }
+      else if (pTrend > 2.5) { score -= 10; factors.push(['Rising post-front', '+' + pTrend.toFixed(1) + ' hPa', 28]); }
+      else { score += 6; factors.push(['Stable pressure', pToday ? hPaToInHg(pToday).toFixed(2) + ' inHg' : '—', 62]); }
+
+      if (cloud >= 60) { score += 8; factors.push(['Overcast', cloud + '% cloud', 78]); }
+      else if (cloud <= 20) { score -= 4; factors.push(['Bright sun', cloud + '% cloud', 35]); }
+      else factors.push(['Mixed sky', cloud + '% cloud', 55]);
+
+      if (wind >= 5 && wind <= 15) { score += 6; factors.push(['Ripple wind', wind.toFixed(0) + ' mph', 72]); }
+      else if (wind > 22) { score -= 8; factors.push(['Blown out', wind.toFixed(0) + ' mph', 22]); }
+      else factors.push(['Wind', wind.toFixed(0) + ' mph', 50]);
+
+      if (water >= 48 && water <= 72) { score += 8; factors.push(['Water temp window', water.toFixed(0) + '°F', 80]); }
+      else if (water < 42) { score -= 6; factors.push(['Cold water', water.toFixed(0) + '°F', 30]); }
+      else factors.push(['Water / surface', water.toFixed(0) + '°F', 50]);
+
+      if (rain > 0.6) { score -= 6; factors.push(['Heavy rain', rain.toFixed(2) + ' in', 30]); }
+      else if (rain > 0.05) { score += 2; factors.push(['Light rain', rain.toFixed(2) + ' in', 58]); }
+
+      score = Math.max(8, Math.min(98, Math.round(score)));
+      let label = 'Average bite';
+      if (score >= 72) label = 'Feed window';
+      else if (score >= 58) label = 'Worth a trip';
+      else if (score < 40) label = 'Tough';
+      return { score, label, factors, water, wind, pTrend, dateStr };
+    }
+
+    function ratingClass(score) {
+      if (score >= 72) return 'good';
+      if (score >= 58) return 'mid';
+      if (score < 40) return 'poor';
+      return '';
+    }
+
+    function renderFactors(el, factors) {
+      el.innerHTML = factors.map(f => `
+        <div class="factor">
+          <span>${f[0]}</span>
+          <div class="bar"><i style="width:${f[2]}%"></i></div>
+          <span class="tiny">${f[1]}</span>
+        </div>`).join('');
+    }
+
+    async function loadHunt(opts) {
+      const quiet = opts && opts.quiet;
+      const skipView = opts && opts.skipView;
+      if (!quiet) $('huntMeta').textContent = 'Loading weather for ' + huntCoords.label + '…';
+      try {
+        huntWx = await fetchWx(huntCoords.lat, huntCoords.lon);
+        const stamp = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+        $('huntMeta').textContent = huntCoords.label + ' · ' + huntWx.current.temperature_2m + '°F now · wind ' +
+          huntWx.current.wind_speed_10m + ' mph ' + dirName(huntWx.current.wind_direction_10m) + ' · updated ' + stamp;
+        renderHuntWeek(0);
+        updateWindArrow(huntWx.current.wind_direction_10m, huntWx.current.wind_speed_10m);
+        if (map && !skipView && !quiet) map.setView([huntCoords.lat, huntCoords.lon], map.getZoom() || 12);
+      } catch (err) {
+        if (!quiet) $('huntMeta').textContent = 'Could not load weather. Check connection and try again.';
+      }
+    }
+
+    function renderHuntWeek(sel) {
+      const days = huntWx.daily.time.map((_, i) => scoreDeerDay(huntWx, i));
+      // first two days may be past_days
+      const start = Math.max(0, huntWx.daily.time.findIndex(t => t === new Date().toISOString().slice(0,10)));
+      const view = days.map((d, i) => ({ ...d, i })).slice(start, start + 7);
+      if (!view.length) return;
+      const pick = view[Math.min(sel, view.length - 1)];
+      $('huntScore').textContent = pick.score;
+      $('huntBadge').textContent = pick.label;
+      $('huntBadge').className = 'badge ' + ratingClass(pick.score);
+      $('huntWhy').textContent = pick.date.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
+      renderFactors($('huntFactors'), pick.factors);
+      renderHourly(pick.i);
+      $('huntWeek').innerHTML = view.map((d, idx) => `
+        <div class="day ${d.i === pick.i ? 'on' : ''}" data-i="${idx}">
+          <div class="d">${d.date.toLocaleDateString(undefined,{weekday:'short', month:'numeric', day:'numeric'})}</div>
+          <div class="s">${d.score}</div>
+          <div class="tiny">${d.label}</div>
+        </div>`).join('');
+      $('huntWeek').querySelectorAll('.day').forEach(el => {
+        el.onclick = () => renderHuntWeek(Number(el.dataset.i));
+      });
+    }
+
+    async function loadFish() {
+      $('fishMeta').textContent = 'Loading forecast for ' + fishCoords.label + '…';
+      try {
+        fishWx = await fetchWx(fishCoords.lat, fishCoords.lon);
+        const marine = await fetchMarine(fishCoords.lat, fishCoords.lon);
+        $('fishMeta').textContent = fishCoords.label + ' · air ' + fishWx.current.temperature_2m + '°F · pressure ' +
+          hPaToInHg(fishWx.current.pressure_msl).toFixed(2) + ' inHg · updated ' +
+          new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+        renderFishDays(0, marine);
+      } catch {
+        $('fishMeta').textContent = 'Could not load fishing weather.';
+      }
+    }
+
+    function renderFishDays(sel, marine) {
+      const start = Math.max(0, fishWx.daily.time.findIndex(t => t === new Date().toISOString().slice(0,10)));
+      const view = fishWx.daily.time.map((_, i) => ({ ...scoreFishDay(fishWx, marine, i), i })).slice(start, start + 7);
+      const pick = view[Math.min(sel, view.length - 1)];
+      $('fishScore').textContent = pick.score;
+      $('fishBadge').textContent = pick.label;
+      $('fishBadge').className = 'badge ' + ratingClass(pick.score);
+      $('fishWhy').textContent = pick.dateStr;
+      renderFactors($('fishFactors'), pick.factors);
+      $('fishDays').innerHTML = view.map((d, idx) => `
+        <div class="day ${idx === sel ? 'on' : ''}" data-i="${idx}">
+          <div class="d">${d.dateStr.slice(5)}</div>
+          <div class="s">${d.score}</div>
+          <div class="tiny">${d.label}</div>
+        </div>`).join('');
+      $('fishDays').querySelectorAll('.day').forEach(el => {
+        el.onclick = () => renderFishDays(Number(el.dataset.i), marine);
+      });
+    }
+
+    let refreshTimer = null;
+    function startAutoRefresh() {
+      if (refreshTimer) clearInterval(refreshTimer);
+      refreshTimer = setInterval(() => {
+        if (document.hidden) return;
+        loadHunt({ quiet: true, skipView: true });
+        if (fishWx) loadFish();
+      }, 15 * 60 * 1000);
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) {
+          loadHunt({ quiet: true, skipView: true });
+          if (fishWx) loadFish();
+        }
+      });
+    }
+
+    $('huntSaved').onchange = () => {
+      const id = $('huntSaved').value;
+      if (!id) return;
+      const rec = store.lands(store.session()).find(x => String(x.id) === id);
+      if (rec) selectLand(rec);
+    };
+    $('huntSearch').onclick = async () => {
+      try {
+        huntCoords = await geocode($('huntLoc').value);
+        $('huntLoc').value = huntCoords.label;
+        loadHunt();
+      } catch { alert('Could not find that place.'); }
+    };
+      try {
+        huntCoords = await geocode($('huntLoc').value);
+        $('huntLoc').value = huntCoords.label;
+        loadHunt();
+      } catch { alert('Could not find that place.'); }
+    };
+    $('fishSearch').onclick = async () => {
+      try {
+        fishCoords = await geocode($('fishLoc').value);
+        $('fishLoc').value = fishCoords.label;
+        loadFish();
+      } catch { alert('Could not find that water / place.'); }
+    };
+
+    function useMyLocation(kind) {
+      if (!navigator.geolocation) return alert('This browser cannot share location.');
+      navigator.geolocation.getCurrentPosition(async (pos) => {
+        const lat = pos.coords.latitude, lon = pos.coords.longitude;
+        const label = lat.toFixed(4) + ', ' + lon.toFixed(4);
+        if (kind === 'hunt') {
+          huntCoords = { lat, lon, label };
+          $('huntLoc').value = label;
+          if (map) map.setView([lat, lon], 14);
+          loadHunt();
+        } else {
+          fishCoords = { lat, lon, label };
+          $('fishLoc').value = label;
+          loadFish();
+        }
+      }, () => alert('Could not get your location. Allow location access and try again.'), { enableHighAccuracy: true, timeout: 12000 });
+    }
+    $('huntHere').onclick = () => useMyLocation('hunt');
+    $('fishHere').onclick = () => useMyLocation('fish');
+
+    function windColor(speed) {
+      if (speed < 4) return '#7ec8ff';
+      if (speed < 8) return '#8fbf62';
+      if (speed < 13) return '#ff6a13';
+      if (speed < 20) return '#e24a12';
+      return '#c81e1e';
+    }
+    function windBand(speed) {
+      if (speed < 4) return 'light / swirl risk';
+      if (speed < 8) return 'easy drift';
+      if (speed < 13) return 'prime hunting wind';
+      if (speed < 20) return 'strong';
+      return 'blown';
+    }
+
+    const windPointCache = {};
+    let windFetchSeq = 0;
+
+    async function fetchWindsForPoints(pts) {
+      const fresh = [];
+      const out = new Array(pts.length);
+      pts.forEach((p, i) => {
+        const key = p.lat.toFixed(2) + ',' + p.lng.toFixed(2);
+        const hit = windPointCache[key];
+        if (hit && Date.now() - hit.t < 12 * 60 * 1000) out[i] = hit;
+        else fresh.push({ i, key, ...p });
+      });
+      if (fresh.length) {
+        const lats = fresh.map(p => p.lat.toFixed(3)).join(',');
+        const lngs = fresh.map(p => p.lng.toFixed(3)).join(',');
+        const url = 'https://api.open-meteo.com/v1/forecast?latitude=' + lats +
+          '&longitude=' + lngs +
+          '&current=wind_speed_10m,wind_direction_10m&wind_speed_unit=mph';
+        const r = await fetch(url);
+        let data = await r.json();
+        if (!Array.isArray(data)) data = [data];
+        data.forEach((block, j) => {
+          const rec = {
+            deg: block.current.wind_direction_10m,
+            speed: block.current.wind_speed_10m,
+            t: Date.now()
+          };
+          windPointCache[fresh[j].key] = rec;
+          out[fresh[j].i] = rec;
+        });
+      }
+      return out;
+    }
+
+    async function drawMapWind() {
+      if (!map) return;
+      if (!windLayer) windLayer = L.layerGroup().addTo(map);
+      const seq = ++windFetchSeq;
+      const b = map.getBounds();
+      const z = map.getZoom();
+      const cols = z >= 12 ? 5 : z >= 9 ? 6 : z >= 7 ? 7 : 8;
+      const rows = z >= 12 ? 4 : z >= 9 ? 5 : 6;
+      const padLat = (b.getNorth() - b.getSouth()) * 0.07;
+      const padLng = (b.getEast() - b.getWest()) * 0.07;
+      const latStep = (b.getNorth() - b.getSouth() - 2 * padLat) / Math.max(1, rows - 1);
+      const lngStep = (b.getEast() - b.getWest() - 2 * padLng) / Math.max(1, cols - 1);
+      const pts = [];
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          pts.push({
+            lat: b.getSouth() + padLat + r * latStep,
+            lng: b.getWest() + padLng + c * lngStep
+          });
+        }
+      }
+      let winds;
+      try {
+        winds = await fetchWindsForPoints(pts);
+      } catch (e) {
+        winds = pts.map(() => lastWind);
+      }
+      if (seq !== windFetchSeq) return;
+      windLayer.clearLayers();
+      pts.forEach((p, i) => {
+        const w = winds[i] || lastWind;
+        const deg = w.deg || 0;
+        const speed = w.speed || 0;
+        const goingDeg = (deg + 180) % 360;
+        const going = goingDeg * Math.PI / 180;
+        const color = windColor(speed);
+        const shaft = Math.min(latStep, lngStep) * 0.22;
+        const icon = L.divIcon({
+          className: 'wind-cell',
+          iconSize: [16, 20],
+          iconAnchor: [8, 10],
+          html: `<div style="width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-bottom:16px solid ${color};transform:rotate(${goingDeg}deg);filter:drop-shadow(0 1px 1px #000);opacity:.9"></div>`
+        });
+        L.marker([p.lat, p.lng], { icon, interactive: false, keyboard: false, zIndexOffset: 400 }).addTo(windLayer);
+        L.polyline([
+          [p.lat - Math.cos(going) * shaft * 0.3, p.lng - Math.sin(going) * shaft * 0.3],
+          [p.lat + Math.cos(going) * shaft * 0.3, p.lng + Math.sin(going) * shaft * 0.3]
+        ], { color, weight: 2, opacity: 0.75, interactive: false }).addTo(windLayer);
+      });
+    }
+
+    function updateWindArrow(deg, speed) {
+      lastWind = { deg, speed };
+      const going = (deg + 180) % 360;
+      $('windArrow').style.transform = `rotate(${going}deg)`;
+      $('windArrow').style.borderBottomColor = windColor(speed);
+      $('windLabel').textContent = `${speed.toFixed(0)} mph from ${dirName(deg)} · ${windBand(speed)} · color = speed`;
+      drawMapWind();
+    }
+
+    function initMap() {
+      if (map) return;
+      map = L.map('map').setView([huntCoords.lat, huntCoords.lon], 13);
+
+      const streets = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap'
+      });
+      const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 19,
+        attribution: 'Tiles &copy; Esri'
+      });
+      const labels = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 19,
+        attribution: 'Esri labels'
+      });
+      const satWithNames = L.layerGroup([satellite, labels]);
+      satWithNames.addTo(map);
+      L.control.layers(
+        { 'Satellite': satWithNames, 'Street': streets },
+        {},
+        { position: 'topright', collapsed: false }
+      ).addTo(map);
+
+      drawnItems = new L.FeatureGroup().addTo(map);
+      map.on('click', onMapClick);
+      let windMoveTimer = null;
+      const queueWind = () => {
+        clearTimeout(windMoveTimer);
+        windMoveTimer = setTimeout(() => drawMapWind(), 350);
+      };
+      map.on('moveend', queueWind);
+      map.on('zoomend', queueWind);
+    }
+
+    let drawMode = null, sketch = [], sketchLayer = null;
+
+    function resetSketch() {
+      sketch = [];
+      if (sketchLayer) { map.removeLayer(sketchLayer); sketchLayer = null; }
+    }
+    function paintSketch() {
+      if (sketchLayer) map.removeLayer(sketchLayer);
+      sketchLayer = L.layerGroup().addTo(map);
+      sketch.forEach(p => L.circleMarker(p, { radius: 6, color: '#ff6a13', fillColor: '#ff6a13', fillOpacity: 1 }).addTo(sketchLayer));
+      if (sketch.length >= 2) L.polyline(sketch, { color: '#ff6a13', weight: 2, dashArray: '6 4' }).addTo(sketchLayer);
+      if (sketch.length >= 3) L.polygon(sketch, { color: '#ff6a13', weight: 1, fillOpacity: 0.12 }).addTo(sketchLayer);
+    }
+
+    $('startPin').onclick = () => {
+      drawMode = 'pin';
+      resetSketch();
+      $('startPin').textContent = 'Click map…';
+    };
+    $('startDraw').onclick = () => {
+      drawMode = 'poly';
+      resetSketch();
+      $('startDraw').textContent = 'Click corners…';
+    };
+    $('finishDraw').onclick = () => finishPoly();
+    $('clearDraw').onclick = () => {
+      drawMode = null;
+      resetSketch();
+      $('startPin').textContent = 'Drop pin';
+      $('startDraw').textContent = 'Outline land';
+    };
+
+    function saveRec(rec) {
+      const list = store.lands(store.session());
+      list.push(rec);
+      store.saveLands(store.session(), list);
+      $('landName').value = '';
+      drawMode = null;
+      resetSketch();
+      $('startPin').textContent = 'Drop pin';
+      $('startDraw').textContent = 'Outline land';
+      renderLands();
+      selectLand(rec);
+    }
+
+    function finishPoly() {
+      if (drawMode !== 'poly') return;
+      if (sketch.length < 3) return alert('Click at least 3 corners, then Finish land.');
+      const name = $('landName').value.trim() || ('Farm ' + (store.lands(store.session()).length + 1));
+      saveRec({ id: Date.now(), type: 'poly', name, points: sketch.map(p => [p.lat, p.lng]) });
+    }
+
+    function onMapClick(e) {
+      if (!drawMode) return;
+      if (drawMode === 'pin') {
+        const name = $('landName').value.trim() || ('Stand ' + (store.lands(store.session()).length + 1));
+        saveRec({ id: Date.now(), type: 'pin', name, lat: e.latlng.lat, lon: e.latlng.lng });
+        return;
+      }
+      if (drawMode === 'poly') {
+        sketch.push(e.latlng);
+        paintSketch();
+      }
+    }
+
+    function recCenter(rec) {
+      if (rec.type === 'pin') return { lat: rec.lat, lon: rec.lon };
+      if (rec.points && rec.points.length) {
+        const lat = rec.points.reduce((s, p) => s + p[0], 0) / rec.points.length;
+        const lon = rec.points.reduce((s, p) => s + p[1], 0) / rec.points.length;
+        return { lat, lon };
+      }
+      if (rec.sw && rec.ne) return { lat: (rec.sw[0] + rec.ne[0]) / 2, lon: (rec.sw[1] + rec.ne[1]) / 2 };
+      return huntCoords;
+    }
+
+    function fillSavedMenu(selectedId) {
+      const sel = $('huntSaved');
+      if (!sel) return;
+      const list = store.session() ? store.lands(store.session()) : [];
+      sel.innerHTML = '<option value="">Saved spots…</option>' + list.map(rec => {
+        const kind = rec.type === 'pin' ? 'Pin' : 'Farm';
+        return `<option value="${rec.id}">${kind}: ${rec.name}</option>`;
+      }).join('');
+      if (selectedId) sel.value = String(selectedId);
+    }
+
+    function renderLands() {
+      if (!map || !drawnItems) return;
+      drawnItems.clearLayers();
+      const list = store.lands(store.session());
+      list.forEach(rec => {
+        if (rec.type === 'pin') {
+          const m = L.circleMarker([rec.lat, rec.lon], { radius: 8, color: '#ff6a13', fillColor: '#ffb347', fillOpacity: 0.95, weight: 2 });
+          m.bindTooltip(rec.name);
+          m.on('click', () => selectLand(rec));
+          m.addTo(drawnItems);
+        } else if (rec.points) {
+          const poly = L.polygon(rec.points, { color: '#ff6a13', weight: 2, fillOpacity: 0.16 });
+          poly.bindTooltip(rec.name);
+          poly.on('click', () => selectLand(rec));
+          poly.addTo(drawnItems);
+        } else if (rec.sw && rec.ne) {
+          const rect = L.rectangle([rec.sw, rec.ne], { color: '#ff6a13', weight: 2, fillOpacity: 0.16 });
+          rect.bindTooltip(rec.name);
+          rect.on('click', () => selectLand(rec));
+          rect.addTo(drawnItems);
+        }
+      });
+      $('landList').innerHTML = list.length ? list.map(rec => {
+        const kind = rec.type === 'pin' ? 'Pin' : 'Land';
+        const c = recCenter(rec);
+        return `<div class="land-item">
+          <div>
+            <strong>${rec.name}</strong>
+            <div class="tiny">${kind} · ${c.lat.toFixed(4)}, ${c.lon.toFixed(4)}</div>
+          </div>
+          <div class="row">
+            <button class="btn ghost" data-sel="${rec.id}">Use</button>
+            <button class="btn ghost" data-del="${rec.id}">Delete</button>
+          </div>
+        </div>`;
+      }).join('') : '<p class="tiny">No spots yet. Drop a pin on a stand or outline a farm with 3+ clicks.</p>';
+      $('landList').querySelectorAll('[data-sel]').forEach(b => b.onclick = () => {
+        selectLand(list.find(x => x.id == b.dataset.sel));
+      });
+      $('landList').querySelectorAll('[data-del]').forEach(b => b.onclick = () => {
+        store.saveLands(store.session(), list.filter(x => x.id != b.dataset.del));
+        renderLands();
+      });
+      fillSavedMenu(selectedLand && selectedLand.id);
+    }
+
+    async function selectLand(rec) {
+      selectedLand = rec;
+      const c = recCenter(rec);
+      if (rec.points) map.fitBounds(L.polygon(rec.points).getBounds(), { padding: [24, 24] });
+      else if (rec.sw && rec.ne) map.fitBounds([rec.sw, rec.ne], { padding: [24, 24] });
+      else map.setView([c.lat, c.lon], 15);
+      huntCoords = { lat: c.lat, lon: c.lon, label: rec.name };
+      $('huntLoc').value = rec.name;
+      fillSavedMenu(rec.id);
+      await loadHunt({ skipView: true });
+    }
+
+    window.addEventListener('load', () => {
+      const last = localStorage.getItem('ff_last_user');
+      if (last) $('email').value = last;
+      if (store.session() && store.users()[store.session()]) enterApp();
+    });
+  </script>
+</body>
+</html>
