@@ -832,12 +832,6 @@
         loadHunt();
       } catch { alert('Could not find that place.'); }
     };
-      try {
-        huntCoords = await geocode($('huntLoc').value);
-        $('huntLoc').value = huntCoords.label;
-        loadHunt();
-      } catch { alert('Could not find that place.'); }
-    };
     $('fishSearch').onclick = async () => {
       try {
         fishCoords = await geocode($('fishLoc').value);
