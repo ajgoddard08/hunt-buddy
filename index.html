@@ -416,12 +416,14 @@
       }
       store.setSession(email);
       localStorage.setItem('ff_last_user', email);
+      localStorage.setItem('ff_stay', '1');
       enterApp();
     };
     $('guestBtn').onclick = () => {
       seedDemo();
       store.setSession('buddy');
       localStorage.setItem('ff_last_user', 'buddy');
+      localStorage.setItem('ff_stay', '1');
       enterApp();
     };
 
@@ -1153,11 +1155,21 @@
       await loadHunt({ skipView: true });
     }
 
-    window.addEventListener('load', () => {
-      const last = localStorage.getItem('ff_last_user');
-      if (last) $('email').value = last;
-      if (store.session() && store.users()[store.session()]) enterApp();
-    });
+    function restoreSession() {
+      try {
+        const last = localStorage.getItem('ff_last_user');
+        if (last && $('email')) $('email').value = last;
+        const stay = localStorage.getItem('ff_stay') !== '0';
+        const who = store.session();
+        if (stay && who && store.users()[who]) enterApp();
+      } catch (e) {}
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', restoreSession);
+    } else {
+      restoreSession();
+    }
+    window.addEventListener('load', restoreSession);
   </script>
 </body>
 </html>
