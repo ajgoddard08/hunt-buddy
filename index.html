@@ -93,21 +93,37 @@
     #app { display: none; min-height: 100%; }
     header.appbar {
       display: flex; align-items: center; justify-content: space-between;
-      gap: 12px; padding: 12px 18px;
+      flex-wrap: wrap;
+      gap: 8px; padding: 10px 12px;
       border-bottom: 1px solid var(--line);
       background: #172015;
       position: sticky; top: 0; z-index: 20;
     }
-    nav.tabs { display: flex; gap: 8px; }
+    header.appbar .brand-row { margin: 0; }
+    nav.tabs {
+      display: flex; gap: 6px;
+      flex: 1 1 100%;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      padding-bottom: 2px;
+    }
     nav.tabs button {
       background: transparent; border: 1px solid transparent;
-      padding: 8px 14px; border-radius: 999px; cursor: pointer;
+      padding: 8px 12px; border-radius: 999px; cursor: pointer;
       color: var(--muted);
+      white-space: nowrap;
+      flex: 0 0 auto;
     }
     nav.tabs button.active {
       color: #1a1408; border-color: #ff6a13; background: #ff6a13;
     }
-    .userbox { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 14px; }
+    .userbox { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+    .userbox #who {
+      max-width: 110px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
     main { padding: 18px; max-width: 1200px; margin: 0 auto; }
     .page { display: none; }
     .page.show { display: block; }
@@ -176,7 +192,27 @@
     .h-bar.prime span.col { box-shadow: 0 0 0 1px #ff6a13; }
 
     .week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; margin-top: 14px; }
-    @media (max-width: 800px) { .week { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 800px) {
+      .week { grid-template-columns: 1fr 1fr; }
+      main { padding: 12px; }
+      .card { padding: 12px; }
+      .row { align-items: stretch; }
+      .row input, .row select, .row button { width: 100%; }
+      .row button { min-height: 42px; }
+      .factor { grid-template-columns: 1fr; gap: 4px; }
+      .hourly { height: 130px; padding-bottom: 22px; gap: 2px; }
+      .h-bar small {
+        transform: none;
+        height: auto;
+        font-size: 8px;
+        margin-top: 3px;
+      }
+      #map { height: 320px; }
+      .userbox #who { display: none; }
+    }
+    @media (max-width: 420px) {
+      header.appbar .brand { font-size: 16px; }
+    }
     .day {
       background: var(--panel2);
       border: 1px solid var(--line);
@@ -268,7 +304,9 @@
         <div class="brand">HUNT BUDDY</div>
       </div>
       <nav class="tabs">
-        <button class="active" data-page="hunt">Hunting</button>
+        <button class="active" data-page="hunt">Forecast</button>
+        <button data-page="mapPage">Map</button>
+        <button data-page="farms">Farms</button>
         <button data-page="fish">Fishing</button>
       </nav>
       <div class="userbox">
@@ -305,11 +343,23 @@
             <div class="factors" id="huntFactors"></div>
             <div class="week" id="huntWeek"></div>
           </div>
-          <div class="card">
-            <h2>Your land & wind</h2>
-            <p class="tiny">Drop a named pin or click 3+ corners to outline a farm. Finish to save. Little arrows cover the map and show drift. Color = wind speed.</p>
+        </div>
+        <p class="footer note">Weather score plus your farm notes (habitat and when you actually saw deer). Open-Meteo weather.</p>
+      </section>
+
+      <section id="mapPage" class="page">
+        <div class="card">
+            <h2>Wind & farm map</h2>
+            <p class="tiny">Drop a named pin or click 3+ corners to outline a farm. Finish to save. Then add habitat and sightings on the Farms tab — that feeds the forecast.</p>
             <div class="row" style="margin:10px 0">
               <input id="landName" placeholder="Stand or farm name" />
+              <select id="newHabitat" style="width:auto">
+                <option value="woods">Woods</option>
+                <option value="corn">Corn</option>
+                <option value="beans">Beans</option>
+                <option value="clover">Clover / plot</option>
+                <option value="mix">Mix / edge</option>
+              </select>
               <button class="btn gold" id="startPin">Drop pin</button>
               <button class="btn gold" id="startDraw">Outline land</button>
               <button class="btn" id="finishDraw">Finish land</button>
@@ -320,9 +370,39 @@
             <p class="tiny" style="text-align:center" id="windLabel">Wind —</p>
             <p class="tiny" style="text-align:center">Wind color: <span style="color:#7ec8ff">calm</span> · <span style="color:#8fbf62">easy</span> · <span style="color:#ff6a13">prime</span> · <span style="color:#e24a12">strong</span> · <span style="color:#c81e1e">blown</span></p>
             <div class="land-list" id="landList"></div>
+        </div>
+      </section>
+
+      <section id="farms" class="page">
+        <div class="card">
+          <h2>Farm notes</h2>
+          <p class="tiny">Pick a saved spot. Habitat and deer sightings change that property’s forecast — not just statewide weather.</p>
+          <select id="farmPick"></select>
+          <div id="farmEditor" style="display:none;margin-top:14px">
+            <label>Name</label>
+            <input id="farmNameEdit" />
+            <label>Habitat</label>
+            <select id="farmHabitat">
+              <option value="woods">Woods / timber</option>
+              <option value="corn">Corn field</option>
+              <option value="beans">Bean field</option>
+              <option value="clover">Clover / food plot</option>
+              <option value="mix">Mix / edge / CRP</option>
+            </select>
+            <label>Notes</label>
+            <textarea id="farmNotes" rows="3" placeholder="Standing beans on the north 40, oak ridge on the south…"></textarea>
+            <button class="btn" type="button" id="saveFarmInfo" style="margin-top:12px">Save farm info</button>
+            <h3 style="margin:18px 0 8px">Deer seen</h3>
+            <div class="row">
+              <input id="seeDate" type="date" style="width:auto" />
+              <input id="seeTime" type="time" style="width:auto" />
+              <input id="seeCount" type="number" min="1" value="1" placeholder="#" style="width:80px" />
+              <input id="seeNote" placeholder="Does in beans / buck on ridge" />
+              <button class="btn gold" type="button" id="addSighting">Add sighting</button>
+            </div>
+            <div class="land-list" id="sightList" style="margin-top:12px"></div>
           </div>
         </div>
-        <p class="footer note">Forecast score is a field guide, not a guarantee. Built from temperature change, cold-front timing, pressure trend, wind speed/direction, and moon phase. Weather: Open-Meteo.</p>
       </section>
 
       <section id="fish" class="page">
@@ -435,7 +515,8 @@
         btn.classList.add('active');
         document.querySelectorAll('.page').forEach(p => p.classList.remove('show'));
         $(btn.dataset.page).classList.add('show');
-        if (btn.dataset.page === 'hunt' && map) setTimeout(() => map.invalidateSize(), 50);
+        if ((btn.dataset.page === 'hunt' || btn.dataset.page === 'mapPage') && map) setTimeout(() => map.invalidateSize(), 80);
+        if (btn.dataset.page === 'farms') fillFarmPick();
         if (btn.dataset.page === 'fish' && !fishWx) loadFish();
       };
     });
@@ -444,7 +525,7 @@
       try {
         $('auth').style.display = 'none';
         $('app').style.display = 'block';
-        $('who').textContent = store.session() || 'guest';
+        $('who').textContent = (store.session() || 'guest').split('@')[0];
         try { initMap(); } catch (e) { console.warn(e); }
         try { renderLands(); } catch (e) { console.warn(e); }
         try { fillSavedMenu(); } catch (e) {}
@@ -527,6 +608,74 @@
 
     function hPaToInHg(h) { return h * 0.02953; }
 
+    function habitatHourBoost(habitat, month, hour) {
+      const h = habitat || 'woods';
+      let n = 0;
+      const dawn = hour >= 5 && hour <= 8;
+      const dusk = hour >= 16 && hour <= 19;
+      const mid = hour >= 10 && hour <= 14;
+      if (h === 'woods') {
+        if (dawn || dusk) n += 8;
+        if (month >= 10 && month <= 11 && !mid) n += 6;
+      } else if (h === 'corn' || h === 'beans') {
+        if (month >= 8 && month <= 10 && dusk) n += 14;
+        if (month >= 8 && month <= 10 && dawn) n += 8;
+        if (month === 11) n += (dawn || dusk) ? 4 : 0;
+      } else if (h === 'clover') {
+        if (dusk) n += 12;
+        if (dawn) n += 6;
+        if (month >= 9 && month <= 11 && dusk) n += 4;
+      } else if (h === 'mix') {
+        if (dawn || dusk) n += 10;
+      }
+      return n;
+    }
+
+    function sightingHourBoost(rec, hour, dateStr) {
+      const list = (rec && rec.sightings) || [];
+      if (!list.length) return { pts: 0, recent: 0, label: '' };
+      let pts = 0, recent = 0, hits = 0;
+      const day = dateStr ? new Date(dateStr + 'T12:00') : new Date();
+      list.forEach(s => {
+        const sd = new Date(s.date + 'T12:00');
+        const age = (day - sd) / 86400000;
+        if (age < 0 || age > 45) return;
+        const sh = s.time ? parseInt(String(s.time).slice(0, 2), 10) : null;
+        const weight = age <= 3 ? 8 : age <= 10 ? 5 : age <= 21 ? 3 : 1;
+        recent += (s.count || 1) * (age <= 10 ? 1 : 0);
+        if (sh == null || Math.abs(sh - hour) <= 1) {
+          pts += weight;
+          hits++;
+        }
+      });
+      return { pts: Math.min(18, pts), recent, hits };
+    }
+
+    function landDailyBoost(rec, dateObj) {
+      if (!rec) return { pts: 0, bits: [] };
+      const month = dateObj.getMonth() + 1;
+      const bits = [];
+      let pts = 0;
+      const hab = rec.habitat || 'woods';
+      if (hab === 'corn' || hab === 'beans') {
+        if (month >= 8 && month <= 10) { pts += 8; bits.push(['Food source', hab + ' in season', 80]); }
+      } else if (hab === 'clover') {
+        if (month >= 8 && month <= 11) { pts += 6; bits.push(['Food plot', 'clover', 70]); }
+      } else if (hab === 'woods') {
+        if (month >= 10 && month <= 12) { pts += 5; bits.push(['Timber', 'fall woods travel', 65]); }
+      }
+      const list = rec.sightings || [];
+      const recent = list.filter(s => {
+        const age = (dateObj - new Date(s.date + 'T12:00')) / 86400000;
+        return age >= 0 && age <= 10;
+      });
+      if (recent.length) {
+        pts += Math.min(12, recent.length * 3);
+        bits.push(['Recent deer', recent.length + ' sighting(s) last 10 days', 85]);
+      }
+      return { pts, bits };
+    }
+
     function scoreDeerDay(wx, dayIndex) {
       const daily = wx.daily;
       const hourly = wx.hourly;
@@ -581,6 +730,10 @@
       if (moon.name === 'New' || moon.name === 'Full') { score += 3; factors.push(['Moon', moon.name, 60]); }
       else factors.push(['Moon', moon.name, 45]);
 
+      const land = landDailyBoost(selectedLand, date);
+      score += land.pts;
+      land.bits.forEach(b => factors.push(b));
+
       score = Math.max(8, Math.min(98, Math.round(score)));
       let label = 'Fair';
       if (score >= 72) label = 'Prime sit';
@@ -632,6 +785,11 @@
         if (rain > 0.15) score -= 14;
         else if (rain > 0.02) score -= 4;
         if (press - prevP > 1) score += 6;
+        const month = when.getMonth() + 1;
+        if (selectedLand) {
+          score += habitatHourBoost(selectedLand.habitat, month, hour);
+          score += sightingHourBoost(selectedLand, hour, dateStr).pts;
+        }
         score = Math.max(8, Math.min(98, Math.round(score)));
         hours.push({ t, hour, label: hourLabel(t), score, temp, wind, rain });
       });
@@ -647,14 +805,15 @@
       $('huntHourly').innerHTML = hours.map(h => {
         const cls = (isToday && h.hour === nowH) ? 'now' : (h.score >= 72 ? 'prime' : '');
         const color = h.score >= 72 ? '#ff6a13' : h.score >= 58 ? '#8fbf62' : h.score < 40 ? '#c45a32' : '#d4a24a';
-        const show = h.hour % 3 === 0;
+        const show = h.hour % 4 === 0;
         return `<div class="h-bar ${cls}" title="${h.label}: ${h.score} · ${h.temp.toFixed(0)}°F · ${h.wind.toFixed(0)} mph">
           <span class="col" style="height:${Math.max(8, h.score)}%;background:${color}"></span>
           <small>${show ? h.label : ''}</small>
         </div>`;
       }).join('');
       $('huntHourHint').textContent = peak
-        ? ('Best window this day looks like ' + peak.label + ' (' + peak.score + '). Orange bars are prime hours.')
+        ? ('Best window this day looks like ' + peak.label + ' (' + peak.score + ').' +
+          (selectedLand ? ' Includes ' + (selectedLand.habitat || 'woods') + ' and your sighting times.' : ''))
         : '';
     }
 
@@ -1059,14 +1218,31 @@
       if (drawMode !== 'poly') return;
       if (sketch.length < 3) return alert('Click at least 3 corners, then Finish land.');
       const name = $('landName').value.trim() || ('Farm ' + (store.lands(store.session()).length + 1));
-      saveRec({ id: Date.now(), type: 'poly', name, points: sketch.map(p => [p.lat, p.lng]) });
+      saveRec({
+        id: Date.now(),
+        type: 'poly',
+        name,
+        habitat: ($('newHabitat') && $('newHabitat').value) || 'woods',
+        notes: '',
+        sightings: [],
+        points: sketch.map(p => [p.lat, p.lng])
+      });
     }
 
     function onMapClick(e) {
       if (!drawMode) return;
       if (drawMode === 'pin') {
         const name = $('landName').value.trim() || ('Stand ' + (store.lands(store.session()).length + 1));
-        saveRec({ id: Date.now(), type: 'pin', name, lat: e.latlng.lat, lon: e.latlng.lng });
+        saveRec({
+          id: Date.now(),
+          type: 'pin',
+          name,
+          habitat: ($('newHabitat') && $('newHabitat').value) || 'woods',
+          notes: '',
+          sightings: [],
+          lat: e.latlng.lat,
+          lon: e.latlng.lng
+        });
         return;
       }
       if (drawMode === 'poly') {
@@ -1092,10 +1268,90 @@
       const list = store.session() ? store.lands(store.session()) : [];
       sel.innerHTML = '<option value="">Saved spots…</option>' + list.map(rec => {
         const kind = rec.type === 'pin' ? 'Pin' : 'Farm';
-        return `<option value="${rec.id}">${kind}: ${rec.name}</option>`;
+        const hab = rec.habitat ? ' · ' + rec.habitat : '';
+        return `<option value="${rec.id}">${kind}: ${rec.name}${hab}</option>`;
       }).join('');
       if (selectedId) sel.value = String(selectedId);
+      fillFarmPick(selectedId);
     }
+
+    function updateLand(rec) {
+      const list = store.lands(store.session()).map(x => String(x.id) === String(rec.id) ? rec : x);
+      store.saveLands(store.session(), list);
+      if (selectedLand && String(selectedLand.id) === String(rec.id)) selectedLand = rec;
+      renderLands();
+      fillSavedMenu(rec.id);
+    }
+
+    function fillFarmPick(selectedId) {
+      const sel = $('farmPick');
+      if (!sel) return;
+      const list = store.session() ? store.lands(store.session()) : [];
+      sel.innerHTML = '<option value="">Choose a farm or pin…</option>' + list.map(rec =>
+        `<option value="${rec.id}">${rec.name}</option>`
+      ).join('');
+      const id = selectedId || (selectedLand && selectedLand.id);
+      if (id) { sel.value = String(id); showFarmEditor(id); }
+    }
+
+    function showFarmEditor(id) {
+      const rec = store.lands(store.session()).find(x => String(x.id) === String(id));
+      if (!rec) { $('farmEditor').style.display = 'none'; return; }
+      selectedLand = rec;
+      $('farmEditor').style.display = 'block';
+      $('farmNameEdit').value = rec.name || '';
+      $('farmHabitat').value = rec.habitat || 'woods';
+      $('farmNotes').value = rec.notes || '';
+      renderSightings(rec);
+    }
+
+    function renderSightings(rec) {
+      const list = rec.sightings || [];
+      $('sightList').innerHTML = list.length ? list.slice().reverse().map((s, idx) => {
+        const realIdx = list.length - 1 - idx;
+        return `<div class="land-item">
+          <div><strong>${s.date} ${s.time || ''}</strong>
+          <div class="tiny">${s.count || 1} deer${s.note ? ' · ' + s.note : ''}</div></div>
+          <button class="btn ghost" data-sid="${realIdx}">Delete</button>
+        </div>`;
+      }).join('') : '<p class="tiny">No sightings yet. Log date, time, and what you saw.</p>';
+      $('sightList').querySelectorAll('[data-sid]').forEach(b => {
+        b.onclick = () => {
+          rec.sightings.splice(Number(b.dataset.sid), 1);
+          updateLand(rec);
+          renderSightings(rec);
+          if (huntWx) renderHuntWeek(0);
+        };
+      });
+    }
+
+    $('farmPick').onchange = () => showFarmEditor($('farmPick').value);
+    $('saveFarmInfo').onclick = () => {
+      const rec = store.lands(store.session()).find(x => String(x.id) === $('farmPick').value);
+      if (!rec) return;
+      rec.name = $('farmNameEdit').value.trim() || rec.name;
+      rec.habitat = $('farmHabitat').value;
+      rec.notes = $('farmNotes').value;
+      updateLand(rec);
+      if (huntWx) renderHuntWeek(0);
+      alert('Farm info saved. Forecast will use this habitat.');
+    };
+    $('addSighting').onclick = () => {
+      const rec = store.lands(store.session()).find(x => String(x.id) === $('farmPick').value);
+      if (!rec) return alert('Pick a farm first.');
+      if (!$('seeDate').value) return alert('Add a date.');
+      rec.sightings = rec.sightings || [];
+      rec.sightings.push({
+        date: $('seeDate').value,
+        time: $('seeTime').value,
+        count: Number($('seeCount').value || 1),
+        note: $('seeNote').value.trim()
+      });
+      updateLand(rec);
+      renderSightings(rec);
+      $('seeNote').value = '';
+      if (huntWx) renderHuntWeek(0);
+    };
 
     function renderLands() {
       if (!map || !drawnItems) return;
