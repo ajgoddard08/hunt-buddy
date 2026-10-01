@@ -557,14 +557,52 @@
         return { lat, lon, label: q };
       }
       const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=1&language=en&format=json`;
-      const r = await fetch(url);
-      const j = await r.json();
-      if (!j.results || !j.results.length) throw new Error('Place not found');
-      const p = j.results[0];
-      return { lat: p.latitude, lon: p.longitude, label: `${p.name}${p.admin1 ? ', ' + p.admin1 : ''}` };
+      try {
+        const r = await fetch(url);
+        const j = await r.json();
+        if (j.results && j.results.length) {
+          const p = j.results[0];
+          return { lat: p.latitude, lon: p.longitude, label: `${p.name}${p.admin1 ? ', ' + p.admin1 : ''}` };
+        }
+      } catch (e) {}
+      const r2 = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(q), {
+        headers: { 'Accept': 'application/json' }
+      });
+      const arr = await r2.json();
+      if (!arr || !arr.length) throw new Error('Place not found');
+      return { lat: Number(arr[0].lat), lon: Number(arr[0].lon), label: arr[0].display_name.split(',').slice(0, 2).join(',') };
     }
 
     async function fetchWx(lat, lon) {
+      const cacheKey = 'ff_wx_' + Number(lat).toFixed(2) + '_' + Number(lon).toFixed(2);
+      try {
+        const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+        if (cached && cached.j && Date.now() - cached.t < 20 * 60 * 1000) return cached.j;
+      } catch (e) {}
+      try {
+        return await fetchWxMeteo(lat, lon, cacheKey);
+      } catch (e1) {
+        try {
+          const j = await fetchWxWttr(lat, lon);
+          try { localStorage.setItem(cacheKey, JSON.stringify({ t: Date.now(), j })); } catch (e) {}
+          return j;
+        } catch (eW) {
+          try {
+            const j = await fetchWxNws(lat, lon);
+            try { localStorage.setItem(cacheKey, JSON.stringify({ t: Date.now(), j })); } catch (e) {}
+            return j;
+          } catch (e2) {
+            try {
+              const hit = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+              if (hit && hit.j) return hit.j;
+            } catch (e) {}
+            return offlineWx(lat, lon);
+          }
+        }
+      }
+    }
+
+    async function fetchWxMeteo(lat, lon, cacheKey) {
       const params = new URLSearchParams({
         latitude: lat, longitude: lon,
         current: 'temperature_2m,apparent_temperature,precipitation,weather_code,cloud_cover,pressure_msl,wind_speed_10m,wind_direction_10m,wind_gusts_10m',
@@ -579,7 +617,196 @@
       });
       const r = await fetch('https://api.open-meteo.com/v1/forecast?' + params);
       if (!r.ok) throw new Error('Weather request failed');
-      return r.json();
+      const j = await r.json();
+      if (j.error) throw new Error(j.reason || 'Weather error');
+      try { localStorage.setItem(cacheKey, JSON.stringify({ t: Date.now(), j })); } catch (e) {}
+      return j;
+    }
+
+    function nwsDir(txt) {
+      const map = {N:0,NNE:22,NE:45,ENE:67,E:90,ESE:112,SE:135,SSE:157,S:180,SSW:202,SW:225,WSW:247,W:270,WNW:292,NW:315,NNW:337};
+      return map[String(txt || 'S').toUpperCase()] ?? 180;
+    }
+    function nwsMph(txt) {
+      const n = String(txt || '').match(/(\d+)/g);
+      if (!n) return 6;
+      return n.length > 1 ? (Number(n[0]) + Number(n[1])) / 2 : Number(n[0]);
+    }
+
+    function packWx(source, current, hourly, daily) {
+      return { source, current, hourly, daily };
+    }
+
+    async function fetchWxWttr(lat, lon) {
+      const r = await fetch('https://wttr.in/' + lat + ',' + lon + '?format=j1');
+      if (!r.ok) throw new Error('wttr failed');
+      const d = await r.json();
+      const cur = d.current_condition && d.current_condition[0];
+      if (!cur) throw new Error('wttr empty');
+      const hourly = {
+        time: [], temperature_2m: [], precipitation: [], cloud_cover: [],
+        pressure_msl: [], wind_speed_10m: [], wind_direction_10m: [], wind_gusts_10m: [],
+        soil_temperature_0cm: []
+      };
+      const daily = {
+        time: [], temperature_2m_max: [], temperature_2m_min: [], precipitation_sum: [],
+        wind_speed_10m_max: [], wind_direction_10m_dominant: [], sunrise: [], sunset: [], weather_code: []
+      };
+      (d.weather || []).forEach(day => {
+        const date = day.date;
+        daily.time.push(date);
+        daily.temperature_2m_max.push(Number(day.maxtempF));
+        daily.temperature_2m_min.push(Number(day.mintempF));
+        daily.precipitation_sum.push(Number(day.totalSnow_cm || 0) * 0 + Number((day.hourly || []).reduce((s, h) => s + Number(h.precipInches || 0), 0)));
+        const winds = (day.hourly || []).map(h => Number(h.windspeedMiles || 0));
+        daily.wind_speed_10m_max.push(winds.length ? Math.max(...winds) : Number(cur.windspeedMiles));
+        daily.wind_direction_10m_dominant.push(nwsDir((day.hourly && day.hourly[4] && day.hourly[4].winddir16Point) || cur.winddir16Point));
+        daily.sunrise.push(date + 'T07:00');
+        daily.sunset.push(date + 'T19:15');
+        daily.weather_code.push(1);
+        (day.hourly || []).forEach(h => {
+          const hour = String(Math.floor(Number(h.time) / 100)).padStart(2, '0');
+          hourly.time.push(date + 'T' + hour + ':00');
+          hourly.temperature_2m.push(Number(h.tempF));
+          hourly.precipitation.push(Number(h.precipInches || 0));
+          hourly.cloud_cover.push(Number(h.cloudcover || 40));
+          hourly.pressure_msl.push(Number(h.pressure || 1016));
+          hourly.wind_speed_10m.push(Number(h.windspeedMiles || 6));
+          hourly.wind_direction_10m.push(nwsDir(h.winddir16Point));
+          hourly.wind_gusts_10m.push(Number(h.WindGustMiles || h.windspeedMiles || 6));
+          hourly.soil_temperature_0cm.push(Number(h.tempF) - 3);
+        });
+      });
+      return packWx('wttr', {
+        temperature_2m: Number(cur.temp_F),
+        pressure_msl: Number(cur.pressure),
+        wind_speed_10m: Number(cur.windspeedMiles),
+        wind_direction_10m: nwsDir(cur.winddir16Point),
+        wind_gusts_10m: Number(cur.WindGustMiles || cur.windspeedMiles),
+        cloud_cover: Number(cur.cloudcover),
+        precipitation: Number(cur.precipIn || 0)
+      }, hourly, daily);
+    }
+
+    function offlineWx() {
+      const today = new Date();
+      const hourly = {
+        time: [], temperature_2m: [], precipitation: [], cloud_cover: [],
+        pressure_msl: [], wind_speed_10m: [], wind_direction_10m: [], wind_gusts_10m: [],
+        soil_temperature_0cm: []
+      };
+      const daily = {
+        time: [], temperature_2m_max: [], temperature_2m_min: [], precipitation_sum: [],
+        wind_speed_10m_max: [], wind_direction_10m_dominant: [], sunrise: [], sunset: [], weather_code: []
+      };
+      for (let d = -1; d < 7; d++) {
+        const day = new Date(today.getFullYear(), today.getMonth(), today.getDate() + d);
+        const date = localYMD(day);
+        const max = 78 - d * 3;
+        const min = 56 - d * 2;
+        daily.time.push(date);
+        daily.temperature_2m_max.push(max);
+        daily.temperature_2m_min.push(min);
+        daily.precipitation_sum.push(d === 2 ? 0.15 : 0);
+        daily.wind_speed_10m_max.push(8 + (d % 3) * 2);
+        daily.wind_direction_10m_dominant.push(180);
+        daily.sunrise.push(date + 'T07:12');
+        daily.sunset.push(date + 'T19:18');
+        daily.weather_code.push(1);
+        for (let h = 0; h < 24; h++) {
+          const temp = min + (max - min) * Math.sin((h - 5) / 24 * Math.PI);
+          hourly.time.push(date + 'T' + String(h).padStart(2, '0') + ':00');
+          hourly.temperature_2m.push(Math.round(temp));
+          hourly.precipitation.push(0);
+          hourly.cloud_cover.push(40);
+          hourly.pressure_msl.push(1018 + d);
+          hourly.wind_speed_10m.push(7);
+          hourly.wind_direction_10m.push(180);
+          hourly.wind_gusts_10m.push(10);
+          hourly.soil_temperature_0cm.push(temp - 3);
+        }
+      }
+      return packWx('offline', {
+        temperature_2m: 73, pressure_msl: 1018, wind_speed_10m: 6,
+        wind_direction_10m: 180, wind_gusts_10m: 9, cloud_cover: 40, precipitation: 0
+      }, hourly, daily);
+    }
+
+    async function fetchWxNws(lat, lon) {
+      const headers = { 'Accept': 'application/geo+json', 'User-Agent': 'HuntBuddy (local forecast app)' };
+      const pt = await fetch('https://api.weather.gov/points/' + lat + ',' + lon, { headers });
+      if (!pt.ok) throw new Error('NWS points failed');
+      const pj = await pt.json();
+      const hourlyUrl = pj.properties && pj.properties.forecastHourly;
+      if (!hourlyUrl) throw new Error('No hourly forecast');
+      const hr = await fetch(hourlyUrl, { headers });
+      if (!hr.ok) throw new Error('NWS hourly failed');
+      const hj = await hr.json();
+      const periods = (hj.properties && hj.properties.periods) || [];
+      if (!periods.length) throw new Error('Empty NWS forecast');
+
+      const byDay = {};
+      const hourly = {
+        time: [], temperature_2m: [], precipitation: [], cloud_cover: [],
+        pressure_msl: [], wind_speed_10m: [], wind_direction_10m: [], wind_gusts_10m: [],
+        soil_temperature_0cm: []
+      };
+      periods.slice(0, 200).forEach(p => {
+        const when = new Date(p.startTime);
+        const stamp = localYMD(when) + 'T' + String(when.getHours()).padStart(2,'0') + ':00';
+        const temp = Number(p.temperature);
+        const wind = nwsMph(p.windSpeed);
+        const dir = nwsDir(p.windDirection);
+        const pop = (p.probabilityOfPrecipitation && p.probabilityOfPrecipitation.value) || 0;
+        const rain = pop > 60 ? 0.2 : pop > 30 ? 0.05 : 0;
+        const txt = (p.shortForecast || '').toLowerCase();
+        let cloud = 40;
+        if (txt.includes('sunny') || txt.includes('clear')) cloud = 15;
+        else if (txt.includes('cloud') || txt.includes('overcast')) cloud = 80;
+        else if (txt.includes('rain') || txt.includes('shower') || txt.includes('storm')) cloud = 90;
+        hourly.time.push(stamp);
+        hourly.temperature_2m.push(temp);
+        hourly.precipitation.push(rain);
+        hourly.cloud_cover.push(cloud);
+        hourly.pressure_msl.push(1016);
+        hourly.wind_speed_10m.push(wind);
+        hourly.wind_direction_10m.push(dir);
+        hourly.wind_gusts_10m.push(wind + 3);
+        hourly.soil_temperature_0cm.push(temp - 3);
+        const day = stamp.slice(0, 10);
+        if (!byDay[day]) byDay[day] = { temps: [], winds: [], dirs: [], rain: 0 };
+        byDay[day].temps.push(temp);
+        byDay[day].winds.push(wind);
+        byDay[day].dirs.push(dir);
+        byDay[day].rain += rain;
+      });
+      const days = Object.keys(byDay).sort();
+      const daily = {
+        time: days,
+        temperature_2m_max: days.map(d => Math.max(...byDay[d].temps)),
+        temperature_2m_min: days.map(d => Math.min(...byDay[d].temps)),
+        precipitation_sum: days.map(d => byDay[d].rain),
+        wind_speed_10m_max: days.map(d => Math.max(...byDay[d].winds)),
+        wind_direction_10m_dominant: days.map(d => byDay[d].dirs[0]),
+        sunrise: days.map(d => d + 'T07:00'),
+        sunset: days.map(d => d + 'T19:15'),
+        weather_code: days.map(() => 1)
+      };
+      const c0 = periods[0];
+      return {
+        source: 'nws',
+        current: {
+          temperature_2m: Number(c0.temperature),
+          pressure_msl: 1016,
+          wind_speed_10m: nwsMph(c0.windSpeed),
+          wind_direction_10m: nwsDir(c0.windDirection),
+          wind_gusts_10m: nwsMph(c0.windSpeed) + 3,
+          cloud_cover: 40,
+          precipitation: 0
+        },
+        hourly,
+        daily
+      };
     }
 
     async function fetchMarine(lat, lon) {
@@ -621,7 +848,13 @@
       return dirs[Math.round(((deg % 360) / 22.5)) % 16];
     }
 
-    function hPaToInHg(h) { return h * 0.02953; }
+    function localYMD(d) {
+      const x = d ? new Date(d) : new Date();
+      const y = x.getFullYear();
+      const m = String(x.getMonth() + 1).padStart(2, '0');
+      const day = String(x.getDate()).padStart(2, '0');
+      return y + '-' + m + '-' + day;
+    }
 
     function habitatHourBoost(habitat, month, hour) {
       const h = habitat || 'woods';
@@ -813,7 +1046,7 @@
 
     function renderHourly(dayIndex) {
       const hours = scoreDeerHours(huntWx, dayIndex);
-      const today = new Date().toISOString().slice(0, 10);
+      const today = localYMD();
       const isToday = huntWx.daily.time[dayIndex] === today;
       paintHourly(hours, 'huntHourly', 'huntHourAxis', 'huntHourHint', isToday);
       if (selectedLand) {
@@ -916,7 +1149,7 @@
 
     function renderFishHourly(dayIndex, marine) {
       const hours = scoreFishHours(fishWx, marine || lastMarine, dayIndex);
-      const today = new Date().toISOString().slice(0, 10);
+      const today = localYMD();
       paintHourly(hours, 'fishHourly', 'fishHourAxis', 'fishHourHint', fishWx.daily.time[dayIndex] === today);
     }
 
@@ -959,24 +1192,31 @@
     async function loadHunt(opts) {
       const quiet = opts && opts.quiet;
       const skipView = opts && opts.skipView;
+      if (!huntWx) {
+        huntWx = offlineWx();
+        try { renderHuntWeek(0); } catch (e) {}
+      }
       if (!quiet) $('huntMeta').textContent = 'Loading weather for ' + huntCoords.label + '…';
       try {
         huntWx = await fetchWx(huntCoords.lat, huntCoords.lon);
         const stamp = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
         $('huntMeta').textContent = huntCoords.label + ' · ' + huntWx.current.temperature_2m + '°F now · wind ' +
-          huntWx.current.wind_speed_10m + ' mph ' + dirName(huntWx.current.wind_direction_10m) + ' · updated ' + stamp;
+          huntWx.current.wind_speed_10m + ' mph ' + dirName(huntWx.current.wind_direction_10m) + ' · updated ' + stamp +
+          (huntWx.source === 'nws' ? ' · NWS' : huntWx.source === 'wttr' ? ' · backup weather' : huntWx.source === 'offline' ? ' · offline estimate' : '');
         renderHuntWeek(0);
         updateWindArrow(huntWx.current.wind_direction_10m, huntWx.current.wind_speed_10m);
         if (map && !skipView && !quiet) map.setView([huntCoords.lat, huntCoords.lon], map.getZoom() || 12);
       } catch (err) {
-        if (!quiet) $('huntMeta').textContent = 'Could not load weather. Check connection and try again.';
+        huntWx = huntWx || offlineWx();
+        try { renderHuntWeek(0); updateWindArrow(huntWx.current.wind_direction_10m, huntWx.current.wind_speed_10m); } catch (e) {}
+        $('huntMeta').textContent = huntCoords.label + ' · offline estimate (live weather blocked in this file). Use the GitHub website for live data.';
       }
     }
 
     function renderHuntWeek(sel) {
       const days = huntWx.daily.time.map((_, i) => scoreDeerDay(huntWx, i));
       // first two days may be past_days
-      const start = Math.max(0, huntWx.daily.time.findIndex(t => t === new Date().toISOString().slice(0,10)));
+      const start = Math.max(0, huntWx.daily.time.findIndex(t => t === localYMD()));
       const view = days.map((d, i) => ({ ...d, i })).slice(start, start + 7);
       if (!view.length) return;
       const pick = view[Math.min(sel, view.length - 1)];
@@ -998,6 +1238,10 @@
     }
 
     async function loadFish() {
+      if (!fishWx) {
+        fishWx = offlineWx();
+        try { renderFishDays(0, null); } catch (e) {}
+      }
       $('fishMeta').textContent = 'Loading forecast for ' + fishCoords.label + '…';
       try {
         fishWx = await fetchWx(fishCoords.lat, fishCoords.lon);
@@ -1007,12 +1251,14 @@
           new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
         renderFishDays(0, lastMarine);
       } catch {
-        $('fishMeta').textContent = 'Could not load fishing weather.';
+        fishWx = fishWx || offlineWx();
+        try { renderFishDays(0, null); } catch (e) {}
+        $('fishMeta').textContent = fishCoords.label + ' · offline estimate. Open the GitHub website for live weather.';
       }
     }
 
     function renderFishDays(sel, marine) {
-      const start = Math.max(0, fishWx.daily.time.findIndex(t => t === new Date().toISOString().slice(0,10)));
+      const start = Math.max(0, fishWx.daily.time.findIndex(t => t === localYMD()));
       const view = fishWx.daily.time.map((_, i) => ({ ...scoreFishDay(fishWx, marine, i), i })).slice(start, start + 7);
       const pick = view[Math.min(sel, view.length - 1)];
       $('fishScore').textContent = pick.score;
@@ -1113,7 +1359,7 @@
       pts.forEach((p, i) => {
         const key = p.lat.toFixed(2) + ',' + p.lng.toFixed(2);
         const hit = windPointCache[key];
-        if (hit && Date.now() - hit.t < 12 * 60 * 1000) out[i] = hit;
+        if (hit && Date.now() - hit.t < 45 * 60 * 1000) out[i] = hit;
         else fresh.push({ i, key, ...p });
       });
       if (fresh.length) {
@@ -1144,8 +1390,8 @@
       const seq = ++windFetchSeq;
       const b = map.getBounds();
       const z = map.getZoom();
-      const cols = z >= 12 ? 5 : z >= 9 ? 6 : z >= 7 ? 7 : 8;
-      const rows = z >= 12 ? 4 : z >= 9 ? 5 : 6;
+      const cols = z >= 11 ? 4 : z >= 8 ? 5 : 6;
+      const rows = z >= 11 ? 3 : z >= 8 ? 4 : 5;
       const padLat = (b.getNorth() - b.getSouth()) * 0.07;
       const padLng = (b.getEast() - b.getWest()) * 0.07;
       const latStep = (b.getNorth() - b.getSouth() - 2 * padLat) / Math.max(1, rows - 1);
