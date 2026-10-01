@@ -164,6 +164,38 @@
 
     .hourly-wrap { margin-top: 16px; }
     .hourly-wrap h3 { font-size: 14px; font-weight: 600; margin-bottom: 8px; letter-spacing: .04em; }
+    .sun-meter { margin: 14px 0 4px; }
+    .sun-meter .sun-times {
+      display: flex; justify-content: space-between; gap: 8px;
+      font-size: 13px; color: var(--text); margin-bottom: 8px;
+    }
+    .sun-meter .sun-times b { color: #ffb347; }
+    .sun-track {
+      position: relative;
+      height: 18px;
+      border-radius: 999px;
+      overflow: hidden;
+      background: #0b1009;
+      border: 1px solid var(--line);
+    }
+    .sun-track .night { position: absolute; inset: 0; background: #141c12; }
+    .sun-track .daylight {
+      position: absolute; top: 0; bottom: 0;
+      background: linear-gradient(90deg, #c45a20, #ffb347 12%, #ffe08a 50%, #ffb347 88%, #c45a20);
+      opacity: .95;
+    }
+    .sun-track .now-dot {
+      position: absolute; top: 2px;
+      width: 14px; height: 14px; margin-left: -7px;
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 0 0 2px #ff6a13;
+      z-index: 2;
+    }
+    .sun-labels {
+      display: flex; justify-content: space-between;
+      margin-top: 4px; font-size: 11px; color: var(--muted);
+    }
     .hourly {
       display: grid;
       grid-template-columns: repeat(24, 1fr);
@@ -218,10 +250,15 @@
     }
     .day {
       background: var(--panel2);
-      border: 1px solid var(--line);
+      border: 2px solid var(--line);
       border-radius: 10px;
       padding: 10px;
       cursor: pointer;
+    }
+    .day.on {
+      border-color: #ff6a13;
+      box-shadow: 0 0 0 2px #ff6a13;
+      background: #2a361f;
     }
     .day.good { border-color: #8fbf62; }
     .day.good .s { color: #8fbf62; }
@@ -346,6 +383,19 @@
                 <div class="tiny" id="huntWhy"></div>
               </div>
             </div>
+            <div class="sun-meter" id="sunMeter">
+              <div class="sun-times">
+                <span>Sunrise <b id="sunRise">—</b></span>
+                <span id="sunNowLabel">—</span>
+                <span>Sunset <b id="sunSet">—</b></span>
+              </div>
+              <div class="sun-track">
+                <div class="night"></div>
+                <div class="daylight" id="sunDay"></div>
+                <div class="now-dot" id="sunNow"></div>
+              </div>
+              <div class="sun-labels"><span>12a</span><span>6a</span><span>12p</span><span>6p</span><span>12a</span></div>
+            </div>
             <div class="hourly-wrap">
               <h3>Hourly activity</h3>
               <div class="hourly" id="huntHourly"></div>
@@ -376,6 +426,7 @@
               <button class="btn gold" id="startDraw">Outline land</button>
               <button class="btn" id="finishDraw">Finish land</button>
               <button class="btn ghost" id="clearDraw">Cancel</button>
+              <button class="btn ghost" id="mapHere">Use current location</button>
             </div>
             <div id="map"></div>
             <div class="wind-compass"><div class="arrow" id="windArrow"></div></div>
@@ -571,6 +622,18 @@
     let huntWx = null, fishWx = null, lastMarine = null;
     let huntCoords = { lat: 40.043, lon: -86.158, label: 'Westfield, Indiana' };
     let fishCoords = { lat: 39.927, lon: -85.947, label: 'Geist Reservoir, Indiana' };
+    try {
+      const hc = JSON.parse(localStorage.getItem('ff_hunt_coords') || 'null');
+      if (hc && typeof hc.lat === 'number') huntCoords = hc;
+      const fc = JSON.parse(localStorage.getItem('ff_fish_coords') || 'null');
+      if (fc && typeof fc.lat === 'number') fishCoords = fc;
+    } catch (e) {}
+    function saveCoords() {
+      try {
+        localStorage.setItem('ff_hunt_coords', JSON.stringify(huntCoords));
+        localStorage.setItem('ff_fish_coords', JSON.stringify(fishCoords));
+      } catch (e) {}
+    }
 
     function setAuthMode(next) {
       mode = next;
@@ -648,6 +711,8 @@
         $('auth').style.display = 'none';
         $('app').style.display = 'block';
         $('who').textContent = (store.session() || 'guest').split('@')[0];
+        if ($('huntLoc')) $('huntLoc').value = huntCoords.label;
+        if ($('fishLoc')) $('fishLoc').value = fishCoords.label;
         try { initMap(); } catch (e) { console.warn(e); }
         try { renderLands(); } catch (e) { console.warn(e); }
         try { fillSavedMenu(); } catch (e) {}
@@ -966,6 +1031,67 @@
       return y + '-' + m + '-' + day;
     }
     function hPaToInHg(h) { return Number(h) * 0.02953; }
+
+    function clockLabel(d) {
+      if (!d || isNaN(d.getTime())) return '—';
+      let h = d.getHours();
+      const m = d.getMinutes();
+      const ap = h >= 12 ? 'p' : 'a';
+      const hr = ((h + 11) % 12) + 1;
+      return hr + ':' + String(m).padStart(2, '0') + ap;
+    }
+    function sunTimesFor(lat, lon, date) {
+      const d = date instanceof Date ? new Date(date) : new Date(date + 'T12:00');
+      const rad = Math.PI / 180;
+      const start = Date.UTC(d.getFullYear(), 0, 0);
+      const day = Math.floor((Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - start) / 86400000);
+      const decl = 23.44 * Math.sin(rad * (360 / 365) * (day - 81));
+      const ha = Math.acos(Math.max(-1, Math.min(1, -Math.tan(lat * rad) * Math.tan(decl * rad))));
+      const minutesFromNoon = (ha / rad) / 15 * 60;
+      const tz = -d.getTimezoneOffset();
+      const solarNoonMin = 12 * 60 - lon * 4 + tz;
+      const mk = (mins) => {
+        const x = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0);
+        x.setMinutes(Math.round(mins));
+        return x;
+      };
+      return { rise: mk(solarNoonMin - minutesFromNoon), set: mk(solarNoonMin + minutesFromNoon) };
+    }
+    function renderSunMeter(dateStr) {
+      if (!$('sunDay')) return;
+      const day = dateStr || localYMD();
+      let rise, set;
+      const i = huntWx && huntWx.daily && huntWx.daily.time ? huntWx.daily.time.indexOf(day) : -1;
+      const apiRise = i >= 0 && huntWx.daily.sunrise ? huntWx.daily.sunrise[i] : null;
+      const apiSet = i >= 0 && huntWx.daily.sunset ? huntWx.daily.sunset[i] : null;
+      const dummy = apiRise && /T07:00/.test(String(apiRise));
+      if (apiRise && apiSet && !dummy) {
+        rise = new Date(apiRise);
+        set = new Date(apiSet);
+      } else {
+        const s = sunTimesFor(huntCoords.lat, huntCoords.lon, day);
+        rise = s.rise; set = s.set;
+      }
+      $('sunRise').textContent = clockLabel(rise);
+      $('sunSet').textContent = clockLabel(set);
+      const risePct = (rise.getHours() * 60 + rise.getMinutes()) / 14.4;
+      const setPct = (set.getHours() * 60 + set.getMinutes()) / 14.4;
+      $('sunDay').style.left = Math.max(0, risePct) + '%';
+      $('sunDay').style.width = Math.max(6, setPct - risePct) + '%';
+      const useNow = day === localYMD();
+      const mark = useNow ? new Date() : new Date(day + 'T12:00');
+      const nowPct = (mark.getHours() * 60 + mark.getMinutes()) / 14.4;
+      $('sunNow').style.left = Math.max(2, Math.min(98, nowPct)) + '%';
+      $('sunNow').style.display = useNow ? 'block' : 'none';
+      if (useNow) {
+        const n = new Date();
+        if (n < rise) $('sunNowLabel').textContent = 'Before light';
+        else if (n > set) $('sunNowLabel').textContent = 'After dark';
+        else $('sunNowLabel').textContent = 'Sun up';
+      } else {
+        $('sunNowLabel').textContent = (Math.round((set - rise) / 360000) / 10) + ' hr day';
+      }
+    }
 
     function habitatHourBoost(habitat, month, hour) {
       const h = habitat || 'woods';
@@ -1362,6 +1488,7 @@
         $('huntBadge').className = 'badge ' + ratingClass(pick.score);
       }
       if ($('huntWhy')) $('huntWhy').textContent = pick.date.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
+      try { renderSunMeter(huntWx.daily.time[pick.i]); } catch (e) {}
       if ($('huntFactors')) renderFactors($('huntFactors'), pick.factors);
       renderHourly(pick.i);
       if ($('huntWeek')) {
@@ -1444,6 +1571,7 @@
       try {
         huntCoords = await geocode($('huntLoc').value);
         $('huntLoc').value = huntCoords.label;
+        saveCoords();
         loadHunt();
       } catch { alert('Could not find that place.'); }
     };
@@ -1451,6 +1579,7 @@
       try {
         fishCoords = await geocode($('fishLoc').value);
         $('fishLoc').value = fishCoords.label;
+        saveCoords();
         loadFish();
       } catch { alert('Could not find that water / place.'); }
     };
@@ -1463,17 +1592,20 @@
         if (kind === 'hunt') {
           huntCoords = { lat, lon, label };
           $('huntLoc').value = label;
+          saveCoords();
           if (map) map.setView([lat, lon], 14);
           loadHunt();
         } else {
           fishCoords = { lat, lon, label };
           $('fishLoc').value = label;
+          saveCoords();
           loadFish();
         }
       }, () => alert('Could not get your location. Allow location access and try again.'), { enableHighAccuracy: true, timeout: 12000 });
     }
     $('huntHere').onclick = () => useMyLocation('hunt');
     $('fishHere').onclick = () => useMyLocation('fish');
+    if ($('mapHere')) $('mapHere').onclick = () => useMyLocation('hunt');
 
     function windColor(speed) {
       if (speed < 4) return '#7ec8ff';
@@ -1921,6 +2053,7 @@
       else if (rec.sw && rec.ne) map.fitBounds([rec.sw, rec.ne], { padding: [24, 24] });
       else map.setView([c.lat, c.lon], 15);
       huntCoords = { lat: c.lat, lon: c.lon, label: rec.name };
+      saveCoords();
       $('huntLoc').value = rec.name;
       fillSavedMenu(rec.id);
       await loadHunt({ skipView: true });
