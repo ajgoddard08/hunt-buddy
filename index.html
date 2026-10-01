@@ -293,18 +293,18 @@
         <label>Username</label>
         <input id="email" type="text" required placeholder="your name or email" autocomplete="username" />
         <label>Password</label>
-        <input id="password" type="password" required minlength="4" autocomplete="current-password" />
+        <input id="password" type="password" required minlength="4" placeholder="password" autocomplete="current-password" />
         <p class="hint" id="authErr" style="color:#ff8a3d;display:none"></p>
         <button class="btn full" type="submit" id="authBtn">Log in</button>
         <button class="btn ghost full" type="button" id="guestBtn">Enter as guest</button>
       </form>
-      <label style="margin-top:16px">Bring account from another device</label>
-      <textarea id="syncPaste" rows="3" placeholder="Paste your Hunt Buddy sync key here"></textarea>
-      <button class="btn ghost full" type="button" id="syncImportBtn">Use sync key</button>
+      <label style="margin-top:16px">4-digit sync PIN from your other device</label>
+      <input id="syncPaste" inputmode="numeric" maxlength="4" placeholder="4829" />
+      <button class="btn ghost full" type="button" id="syncImportBtn">Connect with PIN</button>
       <div class="switch">
         <span id="toggleAuth">Need an account? <a id="modeLink">Create one</a></span>
       </div>
-      <p class="hint">Create an account once, then Log in keeps working on this device. Demo login: buddy / huntbuddy</p>
+      <p class="hint">Same username + password on this phone. To copy farms to a computer, use the 4-digit sync PIN on Farms.</p>
     </div>
   </section>
 
@@ -416,12 +416,13 @@
           </div>
           <div class="card" style="margin-top:16px">
             <h2>Sync devices</h2>
-            <p class="tiny">GitHub Pages cannot keep one shared login by itself. Copy this key on your phone, then paste it on your computer login screen (or here) so farms and the account match.</p>
-            <textarea id="syncKeyBox" rows="4" readonly></textarea>
-            <div class="row" style="margin-top:10px">
-              <button class="btn gold" type="button" id="copySync">Copy sync key</button>
-              <button class="btn" type="button" id="refreshSync">Update key</button>
+            <p class="tiny">This 4-digit PIN copies your account and farms to another phone or computer. Generate it here, then type the same PIN on the other device’s login screen.</p>
+            <div class="row">
+              <input id="syncKeyBox" inputmode="numeric" maxlength="4" placeholder="PIN" style="width:120px;font-size:28px;letter-spacing:.3em;text-align:center" />
+              <button class="btn gold" type="button" id="copySync">Save & copy PIN</button>
+              <button class="btn" type="button" id="refreshSync">New PIN</button>
             </div>
+            <p class="tiny" id="syncStatus" style="margin-top:8px"></p>
           </div>
         </div>
       </section>
@@ -473,26 +474,51 @@
       }
     };
 
-    function makeSyncKey(email) {
+    function syncSlug(pin) {
+      return 'huntb' + String(pin);
+    }
+    function currentPin() {
+      return localStorage.getItem('ff_sync_pin') || '';
+    }
+    function setPin(pin) {
+      localStorage.setItem('ff_sync_pin', pin);
+    }
+    function newPin() {
+      const pin = String(1000 + Math.floor(Math.random() * 9000));
+      setPin(pin);
+      return pin;
+    }
+    function packAccount(email) {
       const users = store.users();
-      const pack = {
+      return {
         v: 1,
         user: email,
         pass: users[email] && users[email].pass,
         lands: store.lands(email),
-        t: Date.now()
+        t: Date.now(),
+        pin: currentPin()
       };
-      return 'HB1.' + btoa(unescape(encodeURIComponent(JSON.stringify(pack))));
     }
-    function readSyncKey(text) {
-      const raw = String(text || '').trim();
-      const body = raw.indexOf('HB1.') === 0 ? raw.slice(4) : raw;
-      const pack = JSON.parse(decodeURIComponent(escape(atob(body))));
-      if (!pack || !pack.user || !pack.pass) throw new Error('bad key');
-      return pack;
+    async function pushPin(pin) {
+      const email = store.session();
+      if (!email || !/^\d{4}$/.test(pin)) throw new Error('bad pin');
+      setPin(pin);
+      const body = JSON.stringify(packAccount(email));
+      const slug = syncSlug(pin);
+      const r = await fetch('https://rentry.co/api/new', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'url=' + encodeURIComponent(slug) + '&text=' + encodeURIComponent(body)
+      });
+      const j = await r.json().catch(() => ({}));
+      if (j && j.edit_code) localStorage.setItem('ff_sync_edit', j.edit_code);
     }
-    function applySyncKey(text) {
-      const pack = readSyncKey(text);
+    async function pullPin(pin) {
+      if (!/^\d{4}$/.test(pin)) throw new Error('bad pin');
+      const r = await fetch('https://rentry.co/' + syncSlug(pin) + '/raw');
+      if (!r.ok) throw new Error('not found');
+      const pack = JSON.parse(await r.text());
+      if (!pack || !pack.user || !pack.pass) throw new Error('bad pack');
       const users = store.users();
       users[pack.user] = { pass: pack.pass, created: pack.t || Date.now() };
       store.saveUsers(users);
@@ -500,20 +526,19 @@
       store.setSession(pack.user);
       localStorage.setItem('ff_last_user', pack.user);
       localStorage.setItem('ff_stay', '1');
+      setPin(pin);
       return pack.user;
     }
     function fillSyncBox() {
       const box = $('syncKeyBox');
-      if (!box || !store.session()) return;
-      box.value = makeSyncKey(store.session());
+      if (!box) return;
+      box.value = currentPin() || newPin();
     }
 
     function seedDemo() {
       const users = store.users();
-      if (!users['buddy']) {
-        users['buddy'] = { pass: 'huntbuddy', created: Date.now() };
-        store.saveUsers(users);
-      }
+      users['buddy'] = { pass: '2580', created: users['buddy'] && users['buddy'].created || Date.now() };
+      store.saveUsers(users);
     }
     seedDemo();
 
@@ -571,13 +596,13 @@
       localStorage.setItem('ff_stay', '1');
       enterApp();
     };
-    $('syncImportBtn').onclick = () => {
+    $('syncImportBtn').onclick = async () => {
       try {
-        applySyncKey($('syncPaste').value);
+        await pullPin(String($('syncPaste').value || '').trim());
         enterApp();
       } catch (e) {
         $('authErr').style.display = 'block';
-        $('authErr').textContent = 'That sync key did not work. Copy it again from Farms on the other device.';
+        $('authErr').textContent = 'That PIN was not found. Generate it on the other device first (Farms → Save & copy PIN).';
       }
     };
 
@@ -1693,17 +1718,23 @@
 
     $('farmPick').onchange = () => showFarmEditor($('farmPick').value);
     $('copySync').onclick = async () => {
-      fillSyncBox();
-      const text = $('syncKeyBox').value;
+      const pin = String($('syncKeyBox').value || '').trim() || newPin();
+      if (!/^\d{4}$/.test(pin)) return alert('PIN must be 4 numbers.');
+      $('syncKeyBox').value = pin;
+      setPin(pin);
+      if ($('syncStatus')) $('syncStatus').textContent = 'Saving PIN…';
       try {
-        await navigator.clipboard.writeText(text);
-        alert('Sync key copied. On the other device open Hunt Buddy, paste it on the login screen, tap Use sync key.');
+        await pushPin(pin);
+        try { await navigator.clipboard.writeText(pin); } catch (e) {}
+        if ($('syncStatus')) $('syncStatus').textContent = 'PIN ' + pin + ' is ready. On the other device type it and tap Connect with PIN.';
       } catch (e) {
-        $('syncKeyBox').select();
-        alert('Select the key and copy it.');
+        if ($('syncStatus')) $('syncStatus').textContent = 'Could not publish PIN. Try again on Wi‑Fi.';
       }
     };
-    $('refreshSync').onclick = () => { fillSyncBox(); };
+    $('refreshSync').onclick = () => {
+      $('syncKeyBox').value = newPin();
+      if ($('syncStatus')) $('syncStatus').textContent = 'New PIN made. Tap Save & copy PIN.';
+    };
     $('saveFarmInfo').onclick = () => {
       const rec = store.lands(store.session()).find(x => String(x.id) === $('farmPick').value);
       if (!rec) return;
