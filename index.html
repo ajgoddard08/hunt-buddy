@@ -1288,7 +1288,7 @@
       return '#c81e1e';
     }
     function hourBarColor(score) {
-      if (score >= 72) return '#ff6a13';
+      if (score >= 72) return '#1f5c2e';
       if (score >= 58) return '#8fbf62';
       if (score < 40) return '#c45a32';
       return '#d4a24a';
@@ -1311,7 +1311,7 @@
         `<span>${(h.hour % 3 === 0) ? h.label : ''}</span>`
       ).join('');
       if (hintId && peak) {
-        $(hintId).textContent = 'Best window this day looks like ' + peak.label + ' (' + peak.score + '). Green good · orange okay · red slow.';
+        $(hintId).textContent = 'Best window this day looks like ' + peak.label + ' (' + peak.score + '). Orange = best hours · green = good · gold = okay · short red = slow.';
       }
     }
 
