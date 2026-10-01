@@ -1494,7 +1494,69 @@
     let windFetchSeq = 0;
 
     async function fetchWindsForPoints(pts) {
-      return pts.map(() => ({ deg: lastWind.deg || 180, speed: lastWind.speed || 6, t: Date.now() }));
+      const out = [];
+      const fresh = [];
+      const z = map && map.getZoom ? map.getZoom() : 8;
+      const cacheDeg = z >= 10 ? 0.08 : z >= 7 ? 0.25 : 0.8;
+      pts.forEach((p, i) => {
+        const key = (Math.round(p.lat / cacheDeg) * cacheDeg).toFixed(2) + ',' + (Math.round(p.lng / cacheDeg) * cacheDeg).toFixed(2);
+        const hit = windPointCache[key];
+        if (hit && Date.now() - hit.t < 40 * 60 * 1000) out[i] = hit;
+        else fresh.push({ i, key, lat: p.lat, lng: p.lng });
+      });
+      if (fresh.length) {
+        try {
+          const lats = fresh.map(p => p.lat.toFixed(3)).join(',');
+          const lngs = fresh.map(p => p.lng.toFixed(3)).join(',');
+          const url = 'https://api.open-meteo.com/v1/forecast?latitude=' + lats +
+            '&longitude=' + lngs +
+            '&current=wind_speed_10m,wind_direction_10m&wind_speed_unit=mph';
+          const r = await fetch(url);
+          let data = await r.json();
+          if (data && data.error) throw new Error(data.reason || 'meteo');
+          if (!Array.isArray(data)) data = [data];
+          data.forEach((block, j) => {
+            if (!block || !block.current || !fresh[j]) return;
+            const rec = {
+              deg: Number(block.current.wind_direction_10m),
+              speed: Number(block.current.wind_speed_10m),
+              t: Date.now()
+            };
+            windPointCache[fresh[j].key] = rec;
+            out[fresh[j].i] = rec;
+          });
+        } catch (e) {
+          const step = Math.max(1, Math.ceil(fresh.length / 5));
+          for (let n = 0; n < fresh.length; n += step) {
+            const p = fresh[n];
+            try {
+              const rec = await fetchOneNwsWind(p.lat, p.lng);
+              windPointCache[p.key] = rec;
+              out[p.i] = rec;
+            } catch (e2) {}
+          }
+        }
+      }
+      return pts.map((p, i) => {
+        if (out[i]) return out[i];
+        const cacheDeg2 = z >= 10 ? 0.08 : z >= 7 ? 0.25 : 0.8;
+        const key = (Math.round(p.lat / cacheDeg2) * cacheDeg2).toFixed(2) + ',' + (Math.round(p.lng / cacheDeg2) * cacheDeg2).toFixed(2);
+        return windPointCache[key] || lastWind || { deg: 180, speed: 6 };
+      });
+    }
+
+    async function fetchOneNwsWind(lat, lon) {
+      const headers = { 'Accept': 'application/geo+json' };
+      const pt = await fetch('https://api.weather.gov/points/' + lat.toFixed(3) + ',' + lon.toFixed(3), { headers });
+      if (!pt.ok) throw new Error('pts');
+      const pj = await pt.json();
+      const url = pj.properties && pj.properties.forecastHourly;
+      if (!url) throw new Error('no hourly');
+      const hr = await fetch(url, { headers });
+      const hj = await hr.json();
+      const p0 = hj.properties && hj.properties.periods && hj.properties.periods[0];
+      if (!p0) throw new Error('empty');
+      return { deg: nwsDir(p0.windDirection), speed: nwsMph(p0.windSpeed), t: Date.now() };
     }
 
     async function drawMapWind() {
