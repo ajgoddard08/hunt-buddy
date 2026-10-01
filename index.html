@@ -573,33 +573,35 @@
       return { lat: Number(arr[0].lat), lon: Number(arr[0].lon), label: arr[0].display_name.split(',').slice(0, 2).join(',') };
     }
 
+    function wxLooksGood(j) {
+      return j && j.daily && Array.isArray(j.daily.time) && j.daily.time.length &&
+        j.hourly && Array.isArray(j.hourly.time) && j.current;
+    }
+
     async function fetchWx(lat, lon) {
       const cacheKey = 'ff_wx_' + Number(lat).toFixed(2) + '_' + Number(lon).toFixed(2);
       try {
         const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
-        if (cached && cached.j && Date.now() - cached.t < 20 * 60 * 1000) return cached.j;
+        if (cached && wxLooksGood(cached.j) && Date.now() - cached.t < 20 * 60 * 1000) return cached.j;
       } catch (e) {}
+      const save = (j) => { try { if (wxLooksGood(j)) localStorage.setItem(cacheKey, JSON.stringify({ t: Date.now(), j })); } catch (e) {} };
       try {
-        return await fetchWxMeteo(lat, lon, cacheKey);
-      } catch (e1) {
-        try {
-          const j = await fetchWxWttr(lat, lon);
-          try { localStorage.setItem(cacheKey, JSON.stringify({ t: Date.now(), j })); } catch (e) {}
-          return j;
-        } catch (eW) {
-          try {
-            const j = await fetchWxNws(lat, lon);
-            try { localStorage.setItem(cacheKey, JSON.stringify({ t: Date.now(), j })); } catch (e) {}
-            return j;
-          } catch (e2) {
-            try {
-              const hit = JSON.parse(localStorage.getItem(cacheKey) || 'null');
-              if (hit && hit.j) return hit.j;
-            } catch (e) {}
-            return offlineWx(lat, lon);
-          }
-        }
-      }
+        const j = await fetchWxMeteo(lat, lon, cacheKey);
+        if (wxLooksGood(j)) { save(j); return j; }
+      } catch (e1) {}
+      try {
+        const j = await fetchWxWttr(lat, lon);
+        if (wxLooksGood(j)) { save(j); return j; }
+      } catch (eW) {}
+      try {
+        const j = await fetchWxNws(lat, lon);
+        if (wxLooksGood(j)) { save(j); return j; }
+      } catch (e2) {}
+      try {
+        const hit = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+        if (wxLooksGood(hit && hit.j)) return hit.j;
+      } catch (e) {}
+      return offlineWx();
     }
 
     async function fetchWxMeteo(lat, lon, cacheKey) {
@@ -1049,7 +1051,7 @@
       const today = localYMD();
       const isToday = huntWx.daily.time[dayIndex] === today;
       paintHourly(hours, 'huntHourly', 'huntHourAxis', 'huntHourHint', isToday);
-      if (selectedLand) {
+      if (selectedLand && $('huntHourHint')) {
         $('huntHourHint').textContent += ' Includes ' + (selectedLand.habitat || 'woods') + ' and your sighting times.';
       }
     }
@@ -1163,6 +1165,17 @@
       if (score >= 40) return '#ff6a13';
       return '#c81e1e';
     }
+    function hourBarColor(score) {
+      if (score >= 72) return '#ff6a13';
+      if (score >= 58) return '#8fbf62';
+      if (score < 40) return '#c45a32';
+      return '#d4a24a';
+    }
+    function factorBarColor(pts) {
+      if (pts >= 70) return '#8fbf62';
+      if (pts >= 45) return '#ff6a13';
+      return '#c81e1e';
+    }
     function paintHourly(hours, barId, axisId, hintId, isToday) {
       const nowH = new Date().getHours();
       const peak = hours.reduce((m, h) => h.score > m.score ? h : m, hours[0] || { score: 0, label: '—' });
@@ -1209,32 +1222,37 @@
       } catch (err) {
         huntWx = huntWx || offlineWx();
         try { renderHuntWeek(0); updateWindArrow(huntWx.current.wind_direction_10m, huntWx.current.wind_speed_10m); } catch (e) {}
-        $('huntMeta').textContent = huntCoords.label + ' · offline estimate (live weather blocked in this file). Use the GitHub website for live data.';
+        $('huntMeta').textContent = huntCoords.label + ' · offline estimate. Pull to refresh, or tap Set location again.';
       }
     }
 
     function renderHuntWeek(sel) {
+      if (!huntWx || !wxLooksGood(huntWx)) huntWx = offlineWx();
       const days = huntWx.daily.time.map((_, i) => scoreDeerDay(huntWx, i));
-      // first two days may be past_days
-      const start = Math.max(0, huntWx.daily.time.findIndex(t => t === localYMD()));
+      let start = huntWx.daily.time.findIndex(t => t === localYMD());
+      if (start < 0) start = 0;
       const view = days.map((d, i) => ({ ...d, i })).slice(start, start + 7);
       if (!view.length) return;
-      const pick = view[Math.min(sel, view.length - 1)];
-      $('huntScore').textContent = pick.score;
-      $('huntBadge').textContent = pick.label;
-      $('huntBadge').className = 'badge ' + ratingClass(pick.score);
-      $('huntWhy').textContent = pick.date.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
-      renderFactors($('huntFactors'), pick.factors);
+      const pick = view[Math.min(sel || 0, view.length - 1)];
+      if ($('huntScore')) $('huntScore').textContent = pick.score;
+      if ($('huntBadge')) {
+        $('huntBadge').textContent = pick.label;
+        $('huntBadge').className = 'badge ' + ratingClass(pick.score);
+      }
+      if ($('huntWhy')) $('huntWhy').textContent = pick.date.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
+      if ($('huntFactors')) renderFactors($('huntFactors'), pick.factors);
       renderHourly(pick.i);
-      $('huntWeek').innerHTML = view.map((d, idx) => `
-        <div class="day ${d.i === pick.i ? 'on' : ''}" data-i="${idx}">
-          <div class="d">${d.date.toLocaleDateString(undefined,{weekday:'short', month:'numeric', day:'numeric'})}</div>
-          <div class="s">${d.score}</div>
-          <div class="tiny">${d.label}</div>
-        </div>`).join('');
-      $('huntWeek').querySelectorAll('.day').forEach(el => {
-        el.onclick = () => renderHuntWeek(Number(el.dataset.i));
-      });
+      if ($('huntWeek')) {
+        $('huntWeek').innerHTML = view.map((d, idx) => `
+          <div class="day ${d.i === pick.i ? 'on' : ''}" data-i="${idx}">
+            <div class="d">${d.date.toLocaleDateString(undefined,{weekday:'short', month:'numeric', day:'numeric'})}</div>
+            <div class="s">${d.score}</div>
+            <div class="tiny">${d.label}</div>
+          </div>`).join('');
+        $('huntWeek').querySelectorAll('.day').forEach(el => {
+          el.onclick = () => renderHuntWeek(Number(el.dataset.i));
+        });
+      }
     }
 
     async function loadFish() {
