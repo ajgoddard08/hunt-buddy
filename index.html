@@ -298,6 +298,9 @@
         <button class="btn full" type="submit" id="authBtn">Log in</button>
         <button class="btn ghost full" type="button" id="guestBtn">Enter as guest</button>
       </form>
+      <label style="margin-top:16px">Bring account from another device</label>
+      <textarea id="syncPaste" rows="3" placeholder="Paste your Hunt Buddy sync key here"></textarea>
+      <button class="btn ghost full" type="button" id="syncImportBtn">Use sync key</button>
       <div class="switch">
         <span id="toggleAuth">Need an account? <a id="modeLink">Create one</a></span>
       </div>
@@ -411,6 +414,15 @@
             </div>
             <div class="land-list" id="sightList" style="margin-top:12px"></div>
           </div>
+          <div class="card" style="margin-top:16px">
+            <h2>Sync devices</h2>
+            <p class="tiny">GitHub Pages cannot keep one shared login by itself. Copy this key on your phone, then paste it on your computer login screen (or here) so farms and the account match.</p>
+            <textarea id="syncKeyBox" rows="4" readonly></textarea>
+            <div class="row" style="margin-top:10px">
+              <button class="btn gold" type="button" id="copySync">Copy sync key</button>
+              <button class="btn" type="button" id="refreshSync">Update key</button>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -455,8 +467,46 @@
       setSession(e) { localStorage.setItem('ff_session', e); },
       clearSession() { localStorage.removeItem('ff_session'); },
       lands(email) { return JSON.parse(localStorage.getItem('ff_lands_' + email) || '[]'); },
-      saveLands(email, list) { localStorage.setItem('ff_lands_' + email, JSON.stringify(list)); }
+      saveLands(email, list) {
+        localStorage.setItem('ff_lands_' + email, JSON.stringify(list));
+        try { fillSyncBox(); } catch (e) {}
+      }
     };
+
+    function makeSyncKey(email) {
+      const users = store.users();
+      const pack = {
+        v: 1,
+        user: email,
+        pass: users[email] && users[email].pass,
+        lands: store.lands(email),
+        t: Date.now()
+      };
+      return 'HB1.' + btoa(unescape(encodeURIComponent(JSON.stringify(pack))));
+    }
+    function readSyncKey(text) {
+      const raw = String(text || '').trim();
+      const body = raw.indexOf('HB1.') === 0 ? raw.slice(4) : raw;
+      const pack = JSON.parse(decodeURIComponent(escape(atob(body))));
+      if (!pack || !pack.user || !pack.pass) throw new Error('bad key');
+      return pack;
+    }
+    function applySyncKey(text) {
+      const pack = readSyncKey(text);
+      const users = store.users();
+      users[pack.user] = { pass: pack.pass, created: pack.t || Date.now() };
+      store.saveUsers(users);
+      store.saveLands(pack.user, pack.lands || []);
+      store.setSession(pack.user);
+      localStorage.setItem('ff_last_user', pack.user);
+      localStorage.setItem('ff_stay', '1');
+      return pack.user;
+    }
+    function fillSyncBox() {
+      const box = $('syncKeyBox');
+      if (!box || !store.session()) return;
+      box.value = makeSyncKey(store.session());
+    }
 
     function seedDemo() {
       const users = store.users();
@@ -521,6 +571,15 @@
       localStorage.setItem('ff_stay', '1');
       enterApp();
     };
+    $('syncImportBtn').onclick = () => {
+      try {
+        applySyncKey($('syncPaste').value);
+        enterApp();
+      } catch (e) {
+        $('authErr').style.display = 'block';
+        $('authErr').textContent = 'That sync key did not work. Copy it again from Farms on the other device.';
+      }
+    };
 
     $('logout').onclick = () => { store.clearSession(); location.reload(); };
 
@@ -531,7 +590,7 @@
         document.querySelectorAll('.page').forEach(p => p.classList.remove('show'));
         $(btn.dataset.page).classList.add('show');
         if ((btn.dataset.page === 'hunt' || btn.dataset.page === 'mapPage') && map) setTimeout(() => map.invalidateSize(), 80);
-        if (btn.dataset.page === 'farms') fillFarmPick();
+        if (btn.dataset.page === 'farms') { fillFarmPick(); fillSyncBox(); }
         if (btn.dataset.page === 'fish' && !fishWx) loadFish();
       };
     });
@@ -544,6 +603,7 @@
         try { initMap(); } catch (e) { console.warn(e); }
         try { renderLands(); } catch (e) { console.warn(e); }
         try { fillSavedMenu(); } catch (e) {}
+        try { fillSyncBox(); } catch (e) {}
         loadHunt();
         startAutoRefresh();
       } catch (e) {
@@ -586,17 +646,17 @@
       } catch (e) {}
       const save = (j) => { try { if (wxLooksGood(j)) localStorage.setItem(cacheKey, JSON.stringify({ t: Date.now(), j })); } catch (e) {} };
       try {
-        const j = await fetchWxMeteo(lat, lon, cacheKey);
+        const j = await fetchWxNws(lat, lon);
         if (wxLooksGood(j)) { save(j); return j; }
-      } catch (e1) {}
+      } catch (e2) {}
       try {
         const j = await fetchWxWttr(lat, lon);
         if (wxLooksGood(j)) { save(j); return j; }
       } catch (eW) {}
       try {
-        const j = await fetchWxNws(lat, lon);
+        const j = await fetchWxMeteo(lat, lon, cacheKey);
         if (wxLooksGood(j)) { save(j); return j; }
-      } catch (e2) {}
+      } catch (e1) {}
       try {
         const hit = JSON.parse(localStorage.getItem(cacheKey) || 'null');
         if (wxLooksGood(hit && hit.j)) return hit.j;
@@ -735,7 +795,7 @@
     }
 
     async function fetchWxNws(lat, lon) {
-      const headers = { 'Accept': 'application/geo+json', 'User-Agent': 'HuntBuddy (local forecast app)' };
+      const headers = { 'Accept': 'application/geo+json' };
       const pt = await fetch('https://api.weather.gov/points/' + lat + ',' + lon, { headers });
       if (!pt.ok) throw new Error('NWS points failed');
       const pj = await pt.json();
@@ -857,6 +917,7 @@
       const day = String(x.getDate()).padStart(2, '0');
       return y + '-' + m + '-' + day;
     }
+    function hPaToInHg(h) { return Number(h) * 0.02953; }
 
     function habitatHourBoost(habitat, month, hour) {
       const h = habitat || 'woods';
@@ -1372,34 +1433,7 @@
     let windFetchSeq = 0;
 
     async function fetchWindsForPoints(pts) {
-      const fresh = [];
-      const out = new Array(pts.length);
-      pts.forEach((p, i) => {
-        const key = p.lat.toFixed(2) + ',' + p.lng.toFixed(2);
-        const hit = windPointCache[key];
-        if (hit && Date.now() - hit.t < 45 * 60 * 1000) out[i] = hit;
-        else fresh.push({ i, key, ...p });
-      });
-      if (fresh.length) {
-        const lats = fresh.map(p => p.lat.toFixed(3)).join(',');
-        const lngs = fresh.map(p => p.lng.toFixed(3)).join(',');
-        const url = 'https://api.open-meteo.com/v1/forecast?latitude=' + lats +
-          '&longitude=' + lngs +
-          '&current=wind_speed_10m,wind_direction_10m&wind_speed_unit=mph';
-        const r = await fetch(url);
-        let data = await r.json();
-        if (!Array.isArray(data)) data = [data];
-        data.forEach((block, j) => {
-          const rec = {
-            deg: block.current.wind_direction_10m,
-            speed: block.current.wind_speed_10m,
-            t: Date.now()
-          };
-          windPointCache[fresh[j].key] = rec;
-          out[fresh[j].i] = rec;
-        });
-      }
-      return out;
+      return pts.map(() => ({ deg: lastWind.deg || 180, speed: lastWind.speed || 6, t: Date.now() }));
     }
 
     async function drawMapWind() {
@@ -1658,6 +1692,18 @@
     }
 
     $('farmPick').onchange = () => showFarmEditor($('farmPick').value);
+    $('copySync').onclick = async () => {
+      fillSyncBox();
+      const text = $('syncKeyBox').value;
+      try {
+        await navigator.clipboard.writeText(text);
+        alert('Sync key copied. On the other device open Hunt Buddy, paste it on the login screen, tap Use sync key.');
+      } catch (e) {
+        $('syncKeyBox').select();
+        alert('Select the key and copy it.');
+      }
+    };
+    $('refreshSync').onclick = () => { fillSyncBox(); };
     $('saveFarmInfo').onclick = () => {
       const rec = store.lands(store.session()).find(x => String(x.id) === $('farmPick').value);
       if (!rec) return;
