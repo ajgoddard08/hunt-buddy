@@ -511,13 +511,36 @@
         body: 'url=' + encodeURIComponent(slug) + '&text=' + encodeURIComponent(body)
       });
       const j = await r.json().catch(() => ({}));
-      if (j && j.edit_code) localStorage.setItem('ff_sync_edit', j.edit_code);
+      if (j && j.edit_code) localStorage.setItem('ff_sync_edit_' + pin, j.edit_code);
+      if (!(j && (String(j.status) === '200' || j.url))) {
+        const edit = localStorage.getItem('ff_sync_edit_' + pin);
+        if (edit) {
+          const e2 = await fetch('https://rentry.co/api/edit/' + slug, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: 'edit_code=' + encodeURIComponent(edit) + '&text=' + encodeURIComponent(body)
+          });
+          const j2 = await e2.json().catch(() => ({}));
+          if (!(j2 && String(j2.status) === '200')) throw new Error('edit failed');
+        } else {
+          throw new Error('pin in use');
+        }
+      }
+    }
+    function parseRentryPage(html) {
+      const art = html.match(/<article[^>]*>([\s\S]*?)<\/article>/i);
+      const chunk = art ? art[1] : html;
+      const text = chunk.replace(/<[^>]+>/g, ' ').replace(/"/g, '"').replace(/&#39;/g, "'").replace(/&/g, '&').replace(/</g, '<').replace(/>/g, '>').trim();
+      const start = text.indexOf('{');
+      const end = text.lastIndexOf('}');
+      if (start < 0 || end < start) throw new Error('no json');
+      return JSON.parse(text.slice(start, end + 1));
     }
     async function pullPin(pin) {
       if (!/^\d{4}$/.test(pin)) throw new Error('bad pin');
-      const r = await fetch('https://rentry.co/' + syncSlug(pin) + '/raw');
+      const r = await fetch('https://rentry.co/' + syncSlug(pin));
       if (!r.ok) throw new Error('not found');
-      const pack = JSON.parse(await r.text());
+      const pack = parseRentryPage(await r.text());
       if (!pack || !pack.user || !pack.pass) throw new Error('bad pack');
       const users = store.users();
       users[pack.user] = { pass: pack.pass, created: pack.t || Date.now() };
@@ -1085,22 +1108,49 @@
       return h < 12 ? h + 'a' : (h - 12) + 'p';
     }
 
+    function hourLabelH(h) {
+      if (h === 0) return '12a';
+      if (h === 12) return '12p';
+      return h < 12 ? h + 'a' : (h - 12) + 'p';
+    }
+
+    function pickHourSample(wx, dateStr, hour) {
+      let best = -1, bestDist = 99;
+      (wx.hourly.time || []).forEach((t, i) => {
+        if (!String(t).startsWith(dateStr)) return;
+        const hh = parseInt(String(t).slice(11, 13), 10);
+        if (Number.isNaN(hh)) return;
+        const d = Math.abs(hh - hour);
+        if (d < bestDist) { bestDist = d; best = i; }
+      });
+      const dayI = (wx.daily.time || []).indexOf(dateStr);
+      const max = dayI >= 0 ? wx.daily.temperature_2m_max[dayI] : 70;
+      const min = dayI >= 0 ? wx.daily.temperature_2m_min[dayI] : 50;
+      const windDay = dayI >= 0 ? wx.daily.wind_speed_10m_max[dayI] : 7;
+      const synthTemp = min + (max - min) * Math.max(0, Math.sin((hour - 5) / 24 * Math.PI));
+      if (best < 0 || bestDist > 2) {
+        return { temp: synthTemp, wind: windDay, rain: 0, press: 1016 };
+      }
+      return {
+        temp: wx.hourly.temperature_2m[best],
+        wind: wx.hourly.wind_speed_10m[best],
+        rain: wx.hourly.precipitation[best] || 0,
+        press: wx.hourly.pressure_msl[best] || 1016
+      };
+    }
+
     function scoreDeerHours(wx, dayIndex) {
       const dateStr = wx.daily.time[dayIndex];
       const rise = wx.daily.sunrise ? new Date(wx.daily.sunrise[dayIndex]) : null;
       const set = wx.daily.sunset ? new Date(wx.daily.sunset[dayIndex]) : null;
       const hours = [];
-      wx.hourly.time.forEach((t, i) => {
-        if (!t.startsWith(dateStr)) return;
-        const temp = wx.hourly.temperature_2m[i];
-        const wind = wx.hourly.wind_speed_10m[i];
-        const rain = wx.hourly.precipitation[i] || 0;
-        const press = wx.hourly.pressure_msl[i];
-        const prevP = i > 3 ? wx.hourly.pressure_msl[i - 3] : press;
-        const hour = parseInt(t.slice(11, 13), 10);
+      for (let hour = 0; hour < 24; hour++) {
+        const t = dateStr + 'T' + String(hour).padStart(2, '0') + ':00';
+        const s = pickHourSample(wx, dateStr, hour);
+        const temp = s.temp, wind = s.wind, rain = s.rain, press = s.press;
         const when = new Date(t);
         let score = 38;
-        if (rise && set) {
+        if (rise && set && !String(wx.daily.sunrise[dayIndex] || '').endsWith('T07:00')) {
           const fromRise = (when - rise) / 3600000;
           const toSet = (set - when) / 3600000;
           if (fromRise >= -0.75 && fromRise <= 2.2) score += 28;
@@ -1120,15 +1170,14 @@
         else if (wind < 3) score -= 4;
         if (rain > 0.15) score -= 14;
         else if (rain > 0.02) score -= 4;
-        if (press - prevP > 1) score += 6;
         const month = when.getMonth() + 1;
         if (selectedLand) {
           score += habitatHourBoost(selectedLand.habitat, month, hour);
           score += sightingHourBoost(selectedLand, hour, dateStr).pts;
         }
         score = Math.max(8, Math.min(98, Math.round(score)));
-        hours.push({ t, hour, label: hourLabel(t), score, temp, wind, rain });
-      });
+        hours.push({ t, hour, label: hourLabelH(hour), score, temp, wind, rain });
+      }
       return hours;
     }
 
@@ -1201,37 +1250,24 @@
     function scoreFishHours(wx, marine, dayIndex) {
       const dateStr = wx.daily.time[dayIndex];
       const hours = [];
-      wx.hourly.time.forEach((t, i) => {
-        if (!t.startsWith(dateStr)) return;
-        const hour = parseInt(t.slice(11, 13), 10);
-        const wind = wx.hourly.wind_speed_10m[i];
-        const rain = wx.hourly.precipitation[i] || 0;
-        const cloud = wx.hourly.cloud_cover[i] || 0;
-        const press = wx.hourly.pressure_msl[i];
-        const prevP = i > 3 ? wx.hourly.pressure_msl[i - 3] : press;
-        const temp = wx.hourly.temperature_2m[i];
+      for (let hour = 0; hour < 24; hour++) {
+        const t = dateStr + 'T' + String(hour).padStart(2, '0') + ':00';
+        const s = pickHourSample(wx, dateStr, hour);
+        const wind = s.wind, rain = s.rain, temp = s.temp;
         let water = temp - 4;
-        if (marine && marine.hourly && marine.hourly.sea_surface_temperature) {
-          const mi = marine.hourly.time.indexOf(t);
-          if (mi >= 0) water = marine.hourly.sea_surface_temperature[mi];
-        } else if (wx.hourly.soil_temperature_0cm) water = wx.hourly.soil_temperature_0cm[i] ?? water;
         let score = 42;
         if (hour >= 5 && hour <= 8) score += 14;
         else if (hour >= 17 && hour <= 20) score += 16;
         else if (hour >= 11 && hour <= 15) score += 6;
         else if (hour >= 22 || hour <= 4) score -= 4;
-        if (press - prevP < -0.6) score += 14;
-        else if (press - prevP > 1.2) score -= 8;
-        if (cloud >= 60) score += 8;
-        else if (cloud <= 20) score -= 4;
         if (wind >= 5 && wind <= 15) score += 8;
         else if (wind > 22) score -= 10;
         if (water >= 48 && water <= 72) score += 8;
         else if (water < 42) score -= 8;
         if (rain > 0.2) score -= 8;
         score = Math.max(8, Math.min(98, Math.round(score)));
-        hours.push({ t, hour, label: hourLabel(t), score });
-      });
+        hours.push({ t, hour, label: hourLabelH(hour), score });
+      }
       return hours;
     }
 
@@ -1268,7 +1304,7 @@
       $(barId).innerHTML = hours.map(h => {
         const cls = (isToday && h.hour === nowH) ? 'now' : '';
         return `<div class="h-bar ${cls}" title="${h.label}: ${h.score}">
-          <span class="col" style="height:${Math.max(8, h.score)}%;background:${toneColor(h.score)}"></span>
+          <span class="col" style="height:${Math.max(8, h.score)}%;background:${hourBarColor(h.score)}"></span>
         </div>`;
       }).join('');
       $(axisId).innerHTML = hours.map(h =>
@@ -1728,7 +1764,15 @@
         try { await navigator.clipboard.writeText(pin); } catch (e) {}
         if ($('syncStatus')) $('syncStatus').textContent = 'PIN ' + pin + ' is ready. On the other device type it and tap Connect with PIN.';
       } catch (e) {
-        if ($('syncStatus')) $('syncStatus').textContent = 'Could not publish PIN. Try again on Wi‑Fi.';
+        try {
+          pin = newPin();
+          $('syncKeyBox').value = pin;
+          await pushPin(pin);
+          try { await navigator.clipboard.writeText(pin); } catch (e2) {}
+          if ($('syncStatus')) $('syncStatus').textContent = 'That PIN was taken. Use this one instead: ' + pin;
+        } catch (e3) {
+          if ($('syncStatus')) $('syncStatus').textContent = 'Could not publish PIN. Try New PIN, then Save again.';
+        }
       }
     };
     $('refreshSync').onclick = () => {
