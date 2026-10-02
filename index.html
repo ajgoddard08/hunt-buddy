@@ -412,7 +412,7 @@
       <section id="mapPage" class="page">
         <div class="card">
             <h2>Wind & farm map</h2>
-            <p class="tiny">Drop a named pin or click 3+ corners to outline a farm. Finish to save. Then add habitat and sightings on the Farms tab — that feeds the forecast.</p>
+            <p class="tiny">Outline the farm, then drop a stand pin inside it. Dots show about where your scent drifts with the wind.</p>
             <div class="row" style="margin:10px 0">
               <input id="landName" placeholder="Stand or farm name" />
               <select id="newHabitat" style="width:auto">
@@ -422,7 +422,7 @@
                 <option value="clover">Clover / plot</option>
                 <option value="mix">Mix / edge</option>
               </select>
-              <button class="btn gold" id="startPin">Drop pin</button>
+              <button class="btn gold" id="startPin">Drop stand</button>
               <button class="btn gold" id="startDraw">Outline land</button>
               <button class="btn" id="finishDraw">Finish land</button>
               <button class="btn ghost" id="clearDraw">Cancel</button>
@@ -618,7 +618,7 @@
 
     let mode = 'login';
     let map, drawnItems, selectedLand = null, lastWind = { deg: 0, speed: 0 };
-    let windLayer = null;
+    let windLayer = null, scentLayer = null;
     let huntWx = null, fishWx = null, lastMarine = null;
     let huntCoords = { lat: 40.043, lon: -86.158, label: 'Westfield, Indiana' };
     let fishCoords = { lat: 39.927, lon: -85.947, label: 'Geist Reservoir, Indiana' };
@@ -1749,6 +1749,7 @@
       $('windArrow').style.borderBottomColor = windColor(speed);
       $('windLabel').textContent = `${speed.toFixed(0)} mph from ${dirName(deg)} · ${windBand(speed)} · color = speed`;
       drawMapWind();
+      try { drawScent(); } catch (e) {}
     }
 
     function initMap() {
@@ -1792,6 +1793,47 @@
 
     let drawMode = null, sketch = [], sketchLayer = null;
 
+    function pointInPoly(lat, lon, points) {
+      let inside = false;
+      for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+        const yi = points[i][0], xi = points[i][1];
+        const yj = points[j][0], xj = points[j][1];
+        const hit = ((yi > lat) !== (yj > lat)) && (lon < (xj - xi) * (lat - yi) / ((yj - yi) || 1e-9) + xi);
+        if (hit) inside = !inside;
+      }
+      return inside;
+    }
+    function farmAt(lat, lon) {
+      const list = store.lands(store.session()) || [];
+      return list.find(rec => rec.points && rec.points.length >= 3 && pointInPoly(lat, lon, rec.points))
+        || list.find(rec => rec.sw && rec.ne && lat >= rec.sw[0] && lat <= rec.ne[0] && lon >= rec.sw[1] && lon <= rec.ne[1]);
+    }
+    function drawScent() {
+      if (!map) return;
+      if (!scentLayer) scentLayer = L.layerGroup().addTo(map);
+      scentLayer.clearLayers();
+      const list = store.session() ? store.lands(store.session()) : [];
+      const from = (lastWind && lastWind.deg) || 180;
+      const going = ((from + 180) % 360) * Math.PI / 180;
+      const speed = Math.max(3, (lastWind && lastWind.speed) || 6);
+      list.forEach(rec => {
+        if (rec.standLat == null || rec.standLon == null) return;
+        for (let i = 1; i <= 12; i++) {
+          const dist = i * 0.00028 * (speed / 7);
+          const wobble = (i % 2 === 0 ? 1 : -1) * i * 0.000035;
+          const lat = rec.standLat + Math.cos(going) * dist + Math.sin(going) * wobble;
+          const lon = rec.standLon + Math.sin(going) * dist / Math.cos(rec.standLat * Math.PI / 180);
+          L.circleMarker([lat, lon], {
+            radius: Math.max(2.5, 6 - i * 0.28),
+            color: '#d6e38a',
+            fillColor: '#c5d86a',
+            fillOpacity: Math.max(0.15, 0.7 - i * 0.045),
+            weight: 0,
+            interactive: false
+          }).addTo(scentLayer);
+        }
+      });
+    }
     function resetSketch() {
       sketch = [];
       if (sketchLayer) { map.removeLayer(sketchLayer); sketchLayer = null; }
@@ -1818,7 +1860,7 @@
     $('clearDraw').onclick = () => {
       drawMode = null;
       resetSketch();
-      $('startPin').textContent = 'Drop pin';
+      $('startPin').textContent = 'Drop stand';
       $('startDraw').textContent = 'Outline land';
     };
 
@@ -1829,7 +1871,7 @@
       $('landName').value = '';
       drawMode = null;
       resetSketch();
-      $('startPin').textContent = 'Drop pin';
+      $('startPin').textContent = 'Drop stand';
       $('startDraw').textContent = 'Outline land';
       renderLands();
       selectLand(rec);
@@ -1853,17 +1895,14 @@
     function onMapClick(e) {
       if (!drawMode) return;
       if (drawMode === 'pin') {
-        const name = $('landName').value.trim() || ('Stand ' + (store.lands(store.session()).length + 1));
-        saveRec({
-          id: Date.now(),
-          type: 'pin',
-          name,
-          habitat: ($('newHabitat') && $('newHabitat').value) || 'woods',
-          notes: '',
-          sightings: [],
-          lat: e.latlng.lat,
-          lon: e.latlng.lng
-        });
+        const farm = farmAt(e.latlng.lat, e.latlng.lng);
+        if (!farm) return alert('Tap inside the farm outline. Outline the land first if you have not yet.');
+        farm.standLat = e.latlng.lat;
+        farm.standLon = e.latlng.lng;
+        farm.standName = $('landName').value.trim() || 'Stand';
+        updateLand(farm);
+        drawMode = null;
+        $('startPin').textContent = 'Drop stand';
         return;
       }
       if (drawMode === 'poly') {
@@ -1873,6 +1912,7 @@
     }
 
     function recCenter(rec) {
+      if (rec.standLat != null) return { lat: rec.standLat, lon: rec.standLon };
       if (rec.type === 'pin') return { lat: rec.lat, lon: rec.lon };
       if (rec.points && rec.points.length) {
         const lat = rec.points.reduce((s, p) => s + p[0], 0) / rec.points.length;
@@ -2015,6 +2055,12 @@
           poly.bindTooltip(rec.name);
           poly.on('click', () => selectLand(rec));
           poly.addTo(drawnItems);
+          if (rec.standLat != null) {
+            const m = L.circleMarker([rec.standLat, rec.standLon], { radius: 8, color: '#1f5c2e', fillColor: '#8fbf62', fillOpacity: 1, weight: 2 });
+            m.bindTooltip((rec.standName || 'Stand') + ' · ' + rec.name);
+            m.on('click', () => selectLand(rec));
+            m.addTo(drawnItems);
+          }
         } else if (rec.sw && rec.ne) {
           const rect = L.rectangle([rec.sw, rec.ne], { color: '#ff6a13', weight: 2, fillOpacity: 0.16 });
           rect.bindTooltip(rec.name);
@@ -2044,6 +2090,7 @@
         renderLands();
       });
       fillSavedMenu(selectedLand && selectedLand.id);
+      drawScent();
     }
 
     async function selectLand(rec) {
