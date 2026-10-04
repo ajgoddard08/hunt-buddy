@@ -229,7 +229,17 @@
       border-radius: 3px 3px 0 0;
       min-height: 4px;
     }
-    .h-bar.now span.col { outline: 1px solid #fff; }
+    .h-bar { cursor: pointer; }
+    .hour-pop {
+      margin-top: 8px;
+      background: #141c10;
+      border: 1px solid #ff6a13;
+      border-radius: 10px;
+      padding: 8px 10px;
+      font-size: 13px;
+      display: none;
+    }
+    .hour-pop b { font-family: Oswald, sans-serif; font-size: 20px; margin-right: 6px; }
 
     .week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; margin-top: 14px; }
     @media (max-width: 800px) {
@@ -385,9 +395,9 @@
             </div>
             <div class="sun-meter" id="sunMeter">
               <div class="sun-times">
-                <span>Sunrise <b id="sunRise">—</b></span>
+                <span>Sunrise <b id="sunRise">—</b><div class="tiny" id="sunRiseWin">30 min before / after</div></span>
                 <span id="sunNowLabel">—</span>
-                <span>Sunset <b id="sunSet">—</b></span>
+                <span style="text-align:right">Sunset <b id="sunSet">—</b><div class="tiny" id="sunSetWin">30 min before / after</div></span>
               </div>
               <div class="sun-track">
                 <div class="night"></div>
@@ -400,6 +410,7 @@
               <h3>Hourly activity</h3>
               <div class="hourly" id="huntHourly"></div>
               <div class="hour-axis" id="huntHourAxis"></div>
+              <div class="hour-pop" id="huntHourPop"></div>
               <p class="tiny" id="huntHourHint" style="margin-top:10px"></p>
             </div>
             <div class="factors" id="huntFactors"></div>
@@ -498,6 +509,7 @@
             <h3>Hourly bite</h3>
             <div class="hourly" id="fishHourly"></div>
             <div class="hour-axis" id="fishHourAxis"></div>
+            <div class="hour-pop" id="fishHourPop"></div>
             <p class="tiny" id="fishHourHint" style="margin-top:10px"></p>
           </div>
           <div class="factors" id="fishFactors"></div>
@@ -1074,6 +1086,12 @@
       }
       $('sunRise').textContent = clockLabel(rise);
       $('sunSet').textContent = clockLabel(set);
+      const beforeR = new Date(rise.getTime() - 30 * 60000);
+      const afterR = new Date(rise.getTime() + 30 * 60000);
+      const beforeS = new Date(set.getTime() - 30 * 60000);
+      const afterS = new Date(set.getTime() + 30 * 60000);
+      if ($('sunRiseWin')) $('sunRiseWin').textContent = clockLabel(beforeR) + ' – ' + clockLabel(afterR);
+      if ($('sunSetWin')) $('sunSetWin').textContent = clockLabel(beforeS) + ' – ' + clockLabel(afterS);
       const risePct = (rise.getHours() * 60 + rise.getMinutes()) / 14.4;
       const setPct = (set.getHours() * 60 + set.getMinutes()) / 14.4;
       $('sunDay').style.left = Math.max(0, risePct) + '%';
@@ -1427,18 +1445,33 @@
     function paintHourly(hours, barId, axisId, hintId, isToday) {
       const nowH = new Date().getHours();
       const peak = hours.reduce((m, h) => h.score > m.score ? h : m, hours[0] || { score: 0, label: '—' });
-      $(barId).innerHTML = hours.map(h => {
+      const popId = barId === 'fishHourly' ? 'fishHourPop' : 'huntHourPop';
+      $(barId).innerHTML = hours.map((h, i) => {
         const cls = (isToday && h.hour === nowH) ? 'now' : '';
-        return `<div class="h-bar ${cls}" title="${h.label}: ${h.score}">
+        const temp = h.temp != null ? Math.round(h.temp) + '°' : '';
+        const wind = h.wind != null ? Math.round(h.wind) + ' mph' : '';
+        return `<div class="h-bar ${cls}" data-i="${i}" title="${h.label}: ${h.score}">
           <span class="col" style="height:${Math.max(8, h.score)}%;background:${hourBarColor(h.score)}"></span>
         </div>`;
       }).join('');
       $(axisId).innerHTML = hours.map(h =>
-        `<span>${(h.hour % 3 === 0) ? h.label : ''}</span>`
+        `<span>${(h.hour % 2 === 0) ? h.label : ''}</span>`
       ).join('');
-      if (hintId && peak) {
-        $(hintId).textContent = 'Best window this day looks like ' + peak.label + ' (' + peak.score + '). Orange = best hours · green = good · gold = okay · short red = slow.';
+      if (hintId && $(hintId) && peak) {
+        $(hintId).textContent = 'Best window this day looks like ' + peak.label + ' (' + peak.score + '). Tap a bar for that hour. Dark green = prime · light green = good · gold = okay · red = slow.';
       }
+      const pop = $(popId);
+      $(barId).querySelectorAll('.h-bar').forEach(el => {
+        el.onclick = () => {
+          const h = hours[Number(el.dataset.i)];
+          if (!h || !pop) return;
+          const temp = h.temp != null ? ' · ' + Math.round(h.temp) + '°F' : '';
+          const wind = h.wind != null ? ' · ' + Math.round(h.wind) + ' mph' : '';
+          pop.style.display = 'block';
+          pop.innerHTML = '<b>' + h.score + '</b> ' + h.label + temp + wind + ' · tap again to hide';
+          pop.onclick = () => { pop.style.display = 'none'; };
+        };
+      });
     }
 
     function renderFactors(el, factors) {
