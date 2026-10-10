@@ -279,7 +279,58 @@
     .day .d { font-size: 12px; color: var(--muted); }
     .day .s { font-size: 22px; font-family: Oswald, sans-serif; }
 
-    #map { height: 420px; border-radius: 12px; border: 1px solid var(--line); }
+    #mapPage.show { margin: -18px -18px 0; }
+    .map-stage { position: relative; height: calc(100vh - 118px); min-height: 420px; }
+    #map { height: 100%; border-radius: 0; border: 0; }
+    .map-bubble {
+      width: 52px; height: 52px; border-radius: 50%;
+      background: #111; color: #fff; border: 0;
+      box-shadow: 0 4px 14px rgba(0,0,0,.4);
+      font-size: 20px; display: grid; place-items: center; cursor: pointer;
+    }
+    .map-rail { position: absolute; right: 12px; top: 70px; z-index: 500; display: flex; flex-direction: column; gap: 12px; }
+    .map-compass {
+      position: absolute; left: 12px; top: 14px; z-index: 500;
+      width: 74px; height: 74px; border-radius: 50%; background: #111; color: #fff;
+      display: grid; place-items: center; font-family: Oswald, sans-serif;
+      box-shadow: 0 4px 14px rgba(0,0,0,.4); font-size: 12px;
+    }
+    .map-compass .arrow {
+      position: absolute; left: 50%; top: 8px;
+      width: 0; height: 0;
+      border-left: 7px solid transparent;
+      border-right: 7px solid transparent;
+      border-bottom: 26px solid #ff6a13;
+      transform-origin: 50% 29px;
+      margin-left: -7px;
+    }
+    .map-compass #mapWindSpeed { margin-top: 28px; font-size: 13px; }
+    .map-bottom {
+      position: absolute; left: 12px; right: 12px; bottom: 14px; z-index: 500;
+      display: flex; justify-content: space-between; gap: 10px;
+    }
+    .map-pill {
+      background: #111; color: #fff; border: 0; border-radius: 999px;
+      padding: 14px 18px; font-weight: 700; box-shadow: 0 4px 14px rgba(0,0,0,.4); cursor: pointer;
+    }
+    .map-sheet {
+      display: none; position: absolute; left: 12px; right: 84px; bottom: 78px; z-index: 510;
+      background: #172015ee; border: 1px solid #3d4f2e; border-radius: 16px; padding: 10px;
+      max-height: 28%; overflow: auto;
+    }
+    .leaflet-top.leaflet-left { margin-top: 86px; margin-left: 8px; }
+    .map-sheet.show { display: block; }
+    .crosshair {
+      position: absolute; left: 50%; top: 46%; z-index: 400; transform: translate(-50%, -50%);
+      width: 28px; height: 28px; pointer-events: none;
+      border: 2px solid #fff; border-radius: 50%;
+      box-shadow: 0 0 0 1px rgba(0,0,0,.4);
+    }
+    .crosshair:before, .crosshair:after {
+      content: ""; position: absolute; background: #fff;
+    }
+    .crosshair:before { left: 50%; top: -8px; width: 2px; height: 44px; margin-left: -1px; }
+    .crosshair:after { top: 50%; left: -8px; height: 2px; width: 44px; margin-top: -1px; }
     .land-list { margin-top: 12px; display: grid; gap: 8px; }
     .land-item {
       display: flex; justify-content: space-between; align-items: center;
@@ -423,29 +474,46 @@
       </section>
 
       <section id="mapPage" class="page">
-        <div class="card">
-            <h2>Wind & farm map</h2>
-            <p class="tiny">Outline the farm, then drop a stand pin inside it. Dots show about where your scent drifts with the wind.</p>
-            <div class="row" style="margin:10px 0">
-              <input id="landName" placeholder="Stand or farm name" />
-              <select id="newHabitat" style="width:auto">
-                <option value="woods">Woods</option>
-                <option value="corn">Corn</option>
-                <option value="beans">Beans</option>
-                <option value="clover">Clover / plot</option>
-                <option value="mix">Mix / edge</option>
-              </select>
+        <div class="map-stage">
+          <div id="map"></div>
+          <div class="crosshair"></div>
+          <div class="map-compass" id="mapWindBadge">
+            <div class="arrow" id="windArrow"></div>
+            <div id="mapWindSpeed">—</div>
+          </div>
+          <div class="map-rail">
+            <button class="map-bubble" id="mapSearchBtn" title="Search">⌕</button>
+            <button class="map-bubble" id="mapHere" title="My location">➤</button>
+            <button class="map-bubble" id="mapFolderBtn" title="Saved farms">▤</button>
+          </div>
+          <div class="map-sheet" id="mapSearchSheet">
+            <input id="mapSearchBox" placeholder="Search a place" />
+            <button class="btn" type="button" id="mapSearchGo" style="margin-top:8px">Go</button>
+          </div>
+          <div class="map-sheet" id="mapToolsSheet">
+            <input id="landName" placeholder="Farm or stand name" />
+            <select id="newHabitat" style="margin-top:8px">
+              <option value="woods">Woods</option>
+              <option value="corn">Corn</option>
+              <option value="beans">Beans</option>
+              <option value="clover">Clover / plot</option>
+              <option value="mix">Mix / edge</option>
+            </select>
+            <div class="row" style="margin-top:8px">
               <button class="btn gold" id="startPin">Drop stand</button>
               <button class="btn gold" id="startDraw">Outline land</button>
-              <button class="btn" id="finishDraw">Finish land</button>
+              <button class="btn" id="finishDraw">Finish</button>
               <button class="btn ghost" id="clearDraw">Cancel</button>
-              <button class="btn ghost" id="mapHere">Use current location</button>
             </div>
-            <div id="map"></div>
-            <div class="wind-compass"><div class="arrow" id="windArrow"></div></div>
-            <p class="tiny" style="text-align:center" id="windLabel">Wind —</p>
-            <p class="tiny" style="text-align:center">Wind color: <span style="color:#7ec8ff">calm</span> · <span style="color:#8fbf62">easy</span> · <span style="color:#ff6a13">prime</span> · <span style="color:#e24a12">strong</span> · <span style="color:#c81e1e">blown</span></p>
+            <p class="tiny" id="windLabel" style="margin-top:8px">Wind —</p>
+          </div>
+          <div class="map-sheet" id="mapFolderSheet">
             <div class="land-list" id="landList"></div>
+          </div>
+          <div class="map-bottom">
+            <button class="map-pill" id="mapLayersBtn">Map layers</button>
+            <button class="map-pill" id="mapToolsBtn">Tools</button>
+          </div>
         </div>
       </section>
 
@@ -532,6 +600,7 @@
           </div>
           <p class="tiny" id="pubMeta" style="margin-top:8px"></p>
           <div class="land-list" id="pubList" style="margin-top:12px"></div>
+          <div id="pubDetail" class="card" style="display:none;margin-top:12px"></div>
         </div>
       </section>
 
@@ -1691,6 +1760,36 @@
     $('huntHere').onclick = () => useMyLocation('hunt');
     $('fishHere').onclick = () => useMyLocation('fish');
     if ($('mapHere')) $('mapHere').onclick = () => useMyLocation('hunt');
+    function showSheet(id) {
+      ['mapSearchSheet', 'mapToolsSheet', 'mapFolderSheet'].forEach(s => {
+        if ($(s)) $(s).classList.toggle('show', s === id && !$(s).classList.contains('show'));
+      });
+    }
+    if ($('mapSearchBtn')) $('mapSearchBtn').onclick = () => showSheet('mapSearchSheet');
+    if ($('mapFolderBtn')) $('mapFolderBtn').onclick = () => showSheet('mapFolderSheet');
+    if ($('mapToolsBtn')) $('mapToolsBtn').onclick = () => showSheet('mapToolsSheet');
+    if ($('mapLayersBtn')) $('mapLayersBtn').onclick = () => {
+      if (!map || !window._hbSat) return;
+      if (map.hasLayer(window._hbSat)) {
+        map.removeLayer(window._hbSat);
+        window._hbStreets.addTo(map);
+        $('mapLayersBtn').textContent = 'Street';
+      } else {
+        map.removeLayer(window._hbStreets);
+        window._hbSat.addTo(map);
+        $('mapLayersBtn').textContent = 'Satellite';
+      }
+    };
+    if ($('mapSearchGo')) $('mapSearchGo').onclick = async () => {
+      try {
+        const c = await geocode($('mapSearchBox').value);
+        huntCoords = c;
+        saveCoords();
+        if ($('huntLoc')) $('huntLoc').value = c.label;
+        if (map) map.setView([c.lat, c.lon], 14);
+        loadHunt({ skipView: true });
+      } catch (e) { alert('Could not find that place.'); }
+    };
 
     function windColor(speed) {
       if (speed < 4) return '#7ec8ff';
@@ -1830,9 +1929,12 @@
     function updateWindArrow(deg, speed) {
       lastWind = { deg, speed };
       const going = (deg + 180) % 360;
-      $('windArrow').style.transform = `rotate(${going}deg)`;
-      $('windArrow').style.borderBottomColor = windColor(speed);
-      $('windLabel').textContent = `${speed.toFixed(0)} mph from ${dirName(deg)} · ${windBand(speed)} · color = speed`;
+      if ($('windArrow')) {
+        $('windArrow').style.transform = `rotate(${going}deg)`;
+        $('windArrow').style.borderBottomColor = windColor(speed);
+      }
+      $('windLabel').textContent = `${speed.toFixed(0)} mph from ${dirName(deg)} · ${windBand(speed)}`;
+      if ($('mapWindSpeed')) $('mapWindSpeed').textContent = speed.toFixed(0) + ' · ' + dirName(deg);
       drawMapWind();
       try { drawScent(); } catch (e) {}
     }
@@ -1859,12 +1961,8 @@
       });
       const satWithNames = L.layerGroup([satellite, labels]);
       satWithNames.addTo(map);
-      L.control.layers(
-        { 'Satellite': satWithNames, 'Street': streets },
-        {},
-        { position: 'topright', collapsed: false }
-      ).addTo(map);
-
+      window._hbSat = satWithNames;
+      window._hbStreets = streets;
       drawnItems = new L.FeatureGroup().addTo(map);
       map.on('click', onMapClick);
       let windMoveTimer = null;
@@ -2237,35 +2335,124 @@
         $('cmpResult').textContent = 'Could not compare those photos.';
       }
     };
+    const IN_PUBLIC = [
+      { name: 'Atterbury Fish & Wildlife Area', lat: 39.35, lon: -86.05, state: 'IN', kind: 'Fish & Wildlife Area' },
+      { name: 'Chinook Fish & Wildlife Area', lat: 40.78, lon: -86.78, state: 'IN', kind: 'Fish & Wildlife Area' },
+      { name: 'Crosley Fish & Wildlife Area', lat: 39.02, lon: -85.12, state: 'IN', kind: 'Fish & Wildlife Area' },
+      { name: 'Deer Creek Fish & Wildlife Area', lat: 40.45, lon: -86.35, state: 'IN', kind: 'Fish & Wildlife Area' },
+      { name: 'Glendale Fish & Wildlife Area', lat: 38.55, lon: -87.05, state: 'IN', kind: 'Fish & Wildlife Area' },
+      { name: 'Goose Pond Fish & Wildlife Area', lat: 39.00, lon: -87.18, state: 'IN', kind: 'Fish & Wildlife Area' },
+      { name: 'Jasper-Pulaski Fish & Wildlife Area', lat: 41.15, lon: -86.95, state: 'IN', kind: 'Fish & Wildlife Area' },
+      { name: 'Kankakee Fish & Wildlife Area', lat: 41.25, lon: -86.85, state: 'IN', kind: 'Fish & Wildlife Area' },
+      { name: 'Kingsbury Fish & Wildlife Area', lat: 41.52, lon: -86.62, state: 'IN', kind: 'Fish & Wildlife Area' },
+      { name: 'Lasalle Fish & Wildlife Area', lat: 41.35, lon: -86.75, state: 'IN', kind: 'Fish & Wildlife Area' },
+      { name: 'Pigeon River Fish & Wildlife Area', lat: 41.68, lon: -85.22, state: 'IN', kind: 'Fish & Wildlife Area' },
+      { name: 'Roush Lake Fish & Wildlife Area', lat: 40.85, lon: -85.45, state: 'IN', kind: 'Fish & Wildlife Area' },
+      { name: 'Sugar Ridge Fish & Wildlife Area', lat: 38.32, lon: -87.22, state: 'IN', kind: 'Fish & Wildlife Area' },
+      { name: 'Tri-County Fish & Wildlife Area', lat: 41.42, lon: -86.55, state: 'IN', kind: 'Fish & Wildlife Area' },
+      { name: 'Willow Slough Fish & Wildlife Area', lat: 40.98, lon: -87.48, state: 'IN', kind: 'Fish & Wildlife Area' },
+      { name: 'Winamac Fish & Wildlife Area', lat: 41.08, lon: -86.60, state: 'IN', kind: 'Fish & Wildlife Area' },
+      { name: 'Yellowwood State Forest', lat: 39.18, lon: -86.33, state: 'IN', kind: 'State Forest' },
+      { name: 'Morgan-Monroe State Forest', lat: 39.32, lon: -86.42, state: 'IN', kind: 'State Forest' },
+      { name: 'Clark State Forest', lat: 38.40, lon: -85.85, state: 'IN', kind: 'State Forest' },
+      { name: 'Jackson-Washington State Forest', lat: 38.85, lon: -86.05, state: 'IN', kind: 'State Forest' }
+    ];
+    function statePack(label) {
+      const s = (label || '').toLowerCase();
+      if (s === 'in' || s.includes('indiana') || s.includes(', in')) return {
+        office: 'Indiana DNR Fish & Wildlife',
+        phone: '317-232-4200',
+        license: 'Indiana hunting license (resident or nonresident). Deer needs a deer license too.',
+        licenseUrl: 'https://www.gooutdoorsin.com/',
+        rulesUrl: 'https://www.eregulations.com/indiana/hunting',
+        guideUrl: 'https://www.in.gov/dnr/fish-and-wildlife/hunting-and-trapping/hunting-trapping-guide/',
+        types: 'Deer, turkey, small game, and waterfowl on most Fish & Wildlife Areas. Some tracts are archery-only or have special draws. Confirm the property page.'
+      };
+      return {
+        office: 'State wildlife agency',
+        phone: 'Look up your state DNR',
+        license: 'Valid state hunting license for that state. Extra tags for deer or turkey are common.',
+        licenseUrl: 'https://www.in.gov/dnr/fish-and-wildlife/licenses-and-permits/',
+        rulesUrl: 'https://www.eregulations.com/indiana/hunting',
+        types: 'Usually deer, small game, and turkey where hunting is open. Check the property rules before you go.'
+      };
+    }
+    function openPublic(s) {
+      const pack = statePack(s.state || $('pubLoc').value);
+      $('pubDetail').style.display = 'block';
+      $('pubDetail').innerHTML = `
+        <button class="btn ghost" type="button" id="pubBack">Back to list</button>
+        <h2 style="margin-top:10px">${s.name}</h2>
+        <p class="tiny">${s.kind || 'Public land'} · about ${s.miles.toFixed(1)} miles</p>
+        <p style="margin-top:10px"><strong>Who to contact</strong><br>${s.operator || pack.office}${s.phone || pack.phone ? '<br>' + (s.phone || pack.phone) : ''}</p>
+        <p style="margin-top:8px"><strong>Licenses</strong><br>${pack.license}</p>
+        <p style="margin-top:8px"><strong>Hunting allowed</strong><br>${s.types || pack.types}</p>
+        <div class="row" style="margin-top:10px">
+          <a class="btn" target="_blank" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(s.name)}">Map</a>
+          <a class="btn ghost" target="_blank" rel="noopener" href="https://www.in.gov/dnr/fish-and-wildlife/licenses-and-permits/">Licenses</a>
+          <a class="btn ghost" target="_blank" rel="noopener" href="https://www.eregulations.com/indiana/hunting">Rules</a>
+          <a class="btn ghost" target="_blank" href="https://www.google.com/search?q=${encodeURIComponent(s.name + ' Indiana DNR hunting')}">Property</a>
+        </div>
+        <p class="tiny" style="margin-top:8px">Confirm seasons, draws, and property rules before you hunt. This is a starting sheet, not the official permit.</p>`;
+      $('pubBack').onclick = () => { $('pubDetail').style.display = 'none'; };
+      $('pubDetail').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
     async function searchPublic(lat, lon, label) {
-      $('pubMeta').textContent = 'Searching public land near ' + label + '…';
-      const q = `[out:json][timeout:25];(nwr["leisure"="nature_reserve"](around:45000,${lat},${lon});nwr["boundary"="protected_area"](around:45000,${lat},${lon});nwr["protect_class"](around:45000,${lat},${lon}););out center 30;`;
-      const r = await fetch('https://overpass-api.de/api/interpreter', { method: 'POST', body: q });
-      if (!r.ok) throw new Error('search failed');
-      const j = await r.json();
+      $('pubMeta').textContent = 'Searching public hunting land near ' + label + '…';
+      $('pubDetail').style.display = 'none';
+      const spots = [];
       const seen = {};
-      const spots = (j.elements || []).map(el => {
-        const tags = el.tags || {};
-        const name = tags.name || tags.ref || '';
-        if (!name) return null;
-        const plat = el.lat || (el.center && el.center.lat);
-        const plon = el.lon || (el.center && el.center.lon);
-        if (plat == null) return null;
-        const key = name.toLowerCase();
-        if (seen[key]) return null;
+      const add = (s) => {
+        if (!s || !s.name) return;
+        const key = s.name.toLowerCase().replace(/[^a-z0-9]+/g, '');
+        if (seen[key]) return;
         seen[key] = 1;
-        const miles = Math.hypot((plat - lat) * 69, (plon - lon) * 54);
-        return { name, plat, plon, miles, kind: tags.leisure || tags.boundary || 'public land' };
-      }).filter(Boolean).sort((a, b) => a.miles - b.miles).slice(0, 20);
-      $('pubMeta').textContent = spots.length ? spots.length + ' places near ' + label : 'No named public areas found nearby. Try a wider city.';
-      $('pubList').innerHTML = spots.map(s => `
+        s.miles = Math.hypot((s.lat - lat) * 69, (s.lon - lon) * 54);
+        spots.push(s);
+      };
+      IN_PUBLIC.forEach(p => add({ ...p, plat: p.lat, plon: p.lon, lat: p.lat, lon: p.lon }));
+      try {
+        const q = encodeURIComponent('fish and wildlife area near ' + label);
+        const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=12&q=' + q, { headers: { 'Accept': 'application/json' } });
+        const arr = await r.json();
+        (arr || []).forEach(p => add({
+          name: p.display_name.split(',').slice(0, 2).join(','),
+          lat: Number(p.lat), lon: Number(p.lon), plat: Number(p.lat), plon: Number(p.lon),
+          kind: p.type || 'public land'
+        }));
+      } catch (e) {}
+      try {
+        const q = `[out:json][timeout:25];(nwr["name"~"Wildlife|State Forest|Fish and Wildlife|WMA",i](around:80000,${lat},${lon}););out center 25;`;
+        const r = await fetch('https://overpass-api.de/api/interpreter', { method: 'POST', body: q });
+        if (r.ok) {
+          const j = await r.json();
+          (j.elements || []).forEach(el => {
+            const tags = el.tags || {};
+            const plat = el.lat || (el.center && el.center.lat);
+            const plon = el.lon || (el.center && el.center.lon);
+            if (!tags.name || plat == null) return;
+            add({
+              name: tags.name, lat: plat, lon: plon, plat, plon,
+              kind: tags.leisure || tags.boundary || 'public land',
+              operator: tags.operator, phone: tags.phone, website: tags.website
+            });
+          });
+        }
+      } catch (e) {}
+      const near = spots.filter(s => s.miles < 120).sort((a, b) => a.miles - b.miles).slice(0, 18);
+      window._pubSpots = near;
+      $('pubMeta').textContent = near.length ? near.length + ' places near ' + label + '. Tap one for contact, licenses, and hunting type.' : 'Nothing close. Try a county name.';
+      $('pubList').innerHTML = near.map((s, i) => `
         <div class="land-item">
           <div>
             <strong>${s.name}</strong>
-            <div class="tiny">${s.kind} · about ${s.miles.toFixed(1)} mi</div>
+            <div class="tiny">${s.kind || 'Public land'} · about ${s.miles.toFixed(0)} mi</div>
           </div>
-          <a class="btn ghost" target="_blank" href="https://www.google.com/maps/search/?api=1&query=${s.plat},${s.plon}">Map</a>
+          <button class="btn ghost" type="button" data-pub="${i}">Open</button>
         </div>`).join('');
+      $('pubList').querySelectorAll('[data-pub]').forEach(b => {
+        b.onclick = () => openPublic(window._pubSpots[Number(b.dataset.pub)]);
+      });
     }
     $('pubSearch').onclick = async () => {
       try {
