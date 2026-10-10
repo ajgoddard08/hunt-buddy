@@ -365,6 +365,8 @@
         <button class="active" data-page="hunt">Forecast</button>
         <button data-page="mapPage">Map</button>
         <button data-page="farms">Farms</button>
+        <button data-page="bucks">Bucks</button>
+        <button data-page="publicLand">Public land</button>
         <button data-page="fish">Fishing</button>
       </nav>
       <div class="userbox">
@@ -471,7 +473,13 @@
               <input id="seeDate" type="date" style="width:auto" />
               <input id="seeTime" type="time" style="width:auto" />
               <input id="seeCount" type="number" min="1" value="1" placeholder="#" style="width:80px" />
-              <input id="seeNote" placeholder="Does in beans / buck on ridge" />
+              <select id="seeKind" style="width:auto">
+                <option value="buck">Buck</option>
+                <option value="doe">Doe</option>
+                <option value="unknown">Unknown</option>
+              </select>
+              <input id="seePhoto" type="file" accept="image/*" style="width:auto" />
+              <input id="seeNote" placeholder="8-pt on north ridge" />
               <button class="btn gold" type="button" id="addSighting">Add sighting</button>
             </div>
             <div class="land-list" id="sightList" style="margin-top:12px"></div>
@@ -486,6 +494,44 @@
             </div>
             <p class="tiny" id="syncStatus" style="margin-top:8px"></p>
           </div>
+        </div>
+      </section>
+
+      <section id="bucks" class="page">
+        <div class="card">
+          <h2>Named bucks</h2>
+          <p class="tiny">Save a buck by name. Compare two photos side by side. The match score is a rough hint from the picture, not proof it is the same deer — antlers, body, and location still decide it.</p>
+          <div class="row" style="margin-top:10px">
+            <input id="buckName" placeholder="Name this buck (North 8)" />
+            <button class="btn gold" type="button" id="saveBuck">Save buck</button>
+          </div>
+          <div class="row" style="margin-top:10px">
+            <input id="cmpA" type="file" accept="image/*" />
+            <input id="cmpB" type="file" accept="image/*" />
+            <button class="btn" type="button" id="cmpBtn">Compare photos</button>
+          </div>
+          <div class="row" id="cmpRow" style="margin-top:10px;align-items:flex-start"></div>
+          <p class="tiny" id="cmpResult"></p>
+          <div class="land-list" id="namedBuckList" style="margin-top:12px"></div>
+        </div>
+        <div class="card" style="margin-top:16px">
+          <h2>Farm buck photos</h2>
+          <p class="tiny">Sightings logged on Farms. File a photo under a named buck so times and farms stay together.</p>
+          <div class="land-list" id="buckList" style="margin-top:12px"></div>
+        </div>
+      </section>
+
+      <section id="publicLand" class="page">
+        <div class="card">
+          <h2>Public hunting land</h2>
+          <p class="tiny">Searches nearby wildlife areas, nature reserves, and public forests from OpenStreetMap. Always confirm seasons, licenses, and rules with the state before you hunt.</p>
+          <div class="row" style="margin-top:10px">
+            <input id="pubLoc" placeholder="City or county" value="Westfield, Indiana" />
+            <button class="btn" id="pubSearch">Search</button>
+            <button class="btn ghost" id="pubHere">Near me</button>
+          </div>
+          <p class="tiny" id="pubMeta" style="margin-top:8px"></p>
+          <div class="land-list" id="pubList" style="margin-top:12px"></div>
         </div>
       </section>
 
@@ -534,7 +580,9 @@
       saveLands(email, list) {
         localStorage.setItem('ff_lands_' + email, JSON.stringify(list));
         try { fillSyncBox(); } catch (e) {}
-      }
+      },
+      bucks(email) { return JSON.parse(localStorage.getItem('ff_bucks_' + email) || '[]'); },
+      saveBucks(email, list) { localStorage.setItem('ff_bucks_' + email, JSON.stringify(list)); }
     };
 
     function syncSlug(pin) {
@@ -558,6 +606,7 @@
         user: email,
         pass: users[email] && users[email].pass,
         lands: store.lands(email),
+        bucks: store.bucks(email),
         t: Date.now(),
         pin: currentPin()
       };
@@ -609,6 +658,7 @@
       users[pack.user] = { pass: pack.pass, created: pack.t || Date.now() };
       store.saveUsers(users);
       store.saveLands(pack.user, pack.lands || []);
+      if (pack.bucks) store.saveBucks(pack.user, pack.bucks);
       store.setSession(pack.user);
       localStorage.setItem('ff_last_user', pack.user);
       localStorage.setItem('ff_stay', '1');
@@ -714,6 +764,8 @@
         $(btn.dataset.page).classList.add('show');
         if ((btn.dataset.page === 'hunt' || btn.dataset.page === 'mapPage') && map) setTimeout(() => map.invalidateSize(), 80);
         if (btn.dataset.page === 'farms') { fillFarmPick(); fillSyncBox(); }
+        if (btn.dataset.page === 'bucks') renderBucks();
+        if (btn.dataset.page === 'publicLand' && $('pubLoc') && !$('pubLoc').value) $('pubLoc').value = huntCoords.label;
         if (btn.dataset.page === 'fish' && !fishWx) loadFish();
       };
     });
@@ -2005,7 +2057,8 @@
         const realIdx = list.length - 1 - idx;
         return `<div class="land-item">
           <div><strong>${s.date} ${s.time || ''}</strong>
-          <div class="tiny">${s.count || 1} deer${s.note ? ' · ' + s.note : ''}</div></div>
+          <div class="tiny">${(s.kind || 'deer')} · ${s.count || 1}${s.note ? ' · ' + s.note : ''}</div>
+          ${s.photo ? `<img src="${s.photo}" alt="" style="margin-top:6px;max-width:140px;border-radius:8px" />` : ''}</div>
           <button class="btn ghost" data-sid="${realIdx}">Delete</button>
         </div>`;
       }).join('') : '<p class="tiny">No sightings yet. Log date, time, and what you saw.</p>';
@@ -2056,20 +2109,197 @@
       if (huntWx) renderHuntWeek(0);
       alert('Farm info saved. Forecast will use this habitat.');
     };
-    $('addSighting').onclick = () => {
+    function shrinkPhoto(file) {
+      return new Promise((resolve) => {
+        if (!file) return resolve('');
+        const img = new Image();
+        const url = URL.createObjectURL(file);
+        img.onload = () => {
+          const max = 480;
+          const scale = Math.min(1, max / Math.max(img.width, img.height));
+          const c = document.createElement('canvas');
+          c.width = Math.max(1, Math.round(img.width * scale));
+          c.height = Math.max(1, Math.round(img.height * scale));
+          c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+          URL.revokeObjectURL(url);
+          resolve(c.toDataURL('image/jpeg', 0.62));
+        };
+        img.onerror = () => resolve('');
+        img.src = url;
+      });
+    }
+    function renderBucks() {
+      const box = $('buckList');
+      if (!box) return;
+      const lands = store.session() ? store.lands(store.session()) : [];
+      const cards = [];
+      lands.forEach(rec => {
+        (rec.sightings || []).forEach(s => {
+          const kind = (s.kind || '').toLowerCase();
+          const note = (s.note || '').toLowerCase();
+          if (kind === 'buck' || (!kind && /buck|8-pt|10-pt|rack|antler/.test(note))) {
+            cards.push({ rec, s });
+          }
+        });
+      });
+      cards.sort((a, b) => String(b.s.date).localeCompare(String(a.s.date)));
+      box.innerHTML = cards.length ? cards.map(({ rec, s }, i) => `
+        <div class="land-item" style="align-items:flex-start">
+          <div>
+            <strong>${rec.name}</strong>
+            <div class="tiny">${s.date} ${s.time || ''} · ${s.count || 1} buck${s.note ? ' · ' + s.note : ''}</div>
+            ${s.photo ? `<img src="${s.photo}" alt="buck" style="margin-top:8px;max-width:220px;border-radius:10px" />` : '<div class="tiny">No photo</div>'}
+            <div class="row" style="margin-top:8px">
+              <select data-file="${i}" style="width:auto">${store.bucks(store.session()).map(b => `<option value="${b.id}">${b.name}</option>`).join('') || '<option value="">Name a buck first</option>'}</select>
+              <button class="btn ghost" type="button" data-addfile="${i}">File under buck</button>
+            </div>
+          </div>
+        </div>`).join('') : '<p class="tiny">No buck sightings yet. On Farms, set the deer type to Buck and add a photo.</p>';
+      box.querySelectorAll('[data-addfile]').forEach(btn => {
+        btn.onclick = () => {
+          const card = cards[Number(btn.dataset.addfile)];
+          const sel = box.querySelector('[data-file="' + btn.dataset.addfile + '"]');
+          if (!card || !sel || !sel.value) return alert('Save a named buck first.');
+          const bucks = store.bucks(store.session());
+          const buck = bucks.find(b => String(b.id) === sel.value);
+          if (!buck) return;
+          buck.photos = buck.photos || [];
+          buck.photos.push({ photo: card.s.photo || '', date: card.s.date, time: card.s.time || '', farm: card.rec.name, note: card.s.note || '' });
+          store.saveBucks(store.session(), bucks);
+          renderNamedBucks();
+          alert('Added to ' + buck.name);
+        };
+      });
+      renderNamedBucks();
+    }
+    function renderNamedBucks() {
+      const box = $('namedBuckList');
+      if (!box || !store.session()) return;
+      const bucks = store.bucks(store.session());
+      box.innerHTML = bucks.length ? bucks.map(b => `
+        <div class="card" style="margin-top:8px">
+          <strong>${b.name}</strong>
+          <div class="tiny">${(b.photos || []).length} photo(s)</div>
+          ${(b.photos || []).map(p => `
+            <div style="margin-top:8px">
+              ${p.photo ? `<img src="${p.photo}" alt="" style="max-width:180px;border-radius:8px" />` : ''}
+              <div class="tiny">${p.date || ''} ${p.time || ''} · ${p.farm || 'unknown farm'}${p.note ? ' · ' + p.note : ''}</div>
+            </div>`).join('')}
+        </div>`).join('') : '<p class="tiny">No named bucks yet.</p>';
+    }
+    function thumbDiff(fileA, fileB) {
+      const load = (file) => new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          const c = document.createElement('canvas');
+          c.width = 32; c.height = 32;
+          const g = c.getContext('2d');
+          g.drawImage(img, 0, 0, 32, 32);
+          resolve(g.getImageData(0, 0, 32, 32).data);
+        };
+        img.onerror = reject;
+        img.src = URL.createObjectURL(file);
+      });
+      return Promise.all([load(fileA), load(fileB)]).then(([a, b]) => {
+        let diff = 0, n = 0;
+        for (let i = 0; i < a.length; i += 4) {
+          const ga = (a[i] + a[i+1] + a[i+2]) / 3;
+          const gb = (b[i] + b[i+1] + b[i+2]) / 3;
+          diff += Math.abs(ga - gb);
+          n++;
+        }
+        const avg = diff / n;
+        return Math.max(0, Math.round(100 - avg / 1.6));
+      });
+    }
+    if ($('saveBuck')) $('saveBuck').onclick = () => {
+      const name = $('buckName').value.trim();
+      if (!name) return alert('Name the buck.');
+      const bucks = store.bucks(store.session());
+      bucks.push({ id: Date.now(), name, photos: [] });
+      store.saveBucks(store.session(), bucks);
+      $('buckName').value = '';
+      renderNamedBucks();
+      renderBucks();
+    };
+    if ($('cmpBtn')) $('cmpBtn').onclick = async () => {
+      const a = $('cmpA').files && $('cmpA').files[0];
+      const b = $('cmpB').files && $('cmpB').files[0];
+      if (!a || !b) return alert('Pick two photos.');
+      const pa = await shrinkPhoto(a);
+      const pb = await shrinkPhoto(b);
+      $('cmpRow').innerHTML = `<img src="${pa}" style="max-width:46%;border-radius:8px" /><img src="${pb}" style="max-width:46%;border-radius:8px" />`;
+      try {
+        const score = await thumbDiff(a, b);
+        const word = score >= 72 ? 'Could be the same deer — check rack and body.' : score >= 50 ? 'Maybe. Lighting or angle may be throwing it off.' : 'Looks like different deer, or a bad angle.';
+        $('cmpResult').textContent = 'Match hint ' + score + ' / 100. ' + word;
+      } catch (e) {
+        $('cmpResult').textContent = 'Could not compare those photos.';
+      }
+    };
+    async function searchPublic(lat, lon, label) {
+      $('pubMeta').textContent = 'Searching public land near ' + label + '…';
+      const q = `[out:json][timeout:25];(nwr["leisure"="nature_reserve"](around:45000,${lat},${lon});nwr["boundary"="protected_area"](around:45000,${lat},${lon});nwr["protect_class"](around:45000,${lat},${lon}););out center 30;`;
+      const r = await fetch('https://overpass-api.de/api/interpreter', { method: 'POST', body: q });
+      if (!r.ok) throw new Error('search failed');
+      const j = await r.json();
+      const seen = {};
+      const spots = (j.elements || []).map(el => {
+        const tags = el.tags || {};
+        const name = tags.name || tags.ref || '';
+        if (!name) return null;
+        const plat = el.lat || (el.center && el.center.lat);
+        const plon = el.lon || (el.center && el.center.lon);
+        if (plat == null) return null;
+        const key = name.toLowerCase();
+        if (seen[key]) return null;
+        seen[key] = 1;
+        const miles = Math.hypot((plat - lat) * 69, (plon - lon) * 54);
+        return { name, plat, plon, miles, kind: tags.leisure || tags.boundary || 'public land' };
+      }).filter(Boolean).sort((a, b) => a.miles - b.miles).slice(0, 20);
+      $('pubMeta').textContent = spots.length ? spots.length + ' places near ' + label : 'No named public areas found nearby. Try a wider city.';
+      $('pubList').innerHTML = spots.map(s => `
+        <div class="land-item">
+          <div>
+            <strong>${s.name}</strong>
+            <div class="tiny">${s.kind} · about ${s.miles.toFixed(1)} mi</div>
+          </div>
+          <a class="btn ghost" target="_blank" href="https://www.google.com/maps/search/?api=1&query=${s.plat},${s.plon}">Map</a>
+        </div>`).join('');
+    }
+    $('pubSearch').onclick = async () => {
+      try {
+        const c = await geocode($('pubLoc').value);
+        $('pubLoc').value = c.label;
+        await searchPublic(c.lat, c.lon, c.label);
+      } catch (e) { $('pubMeta').textContent = 'Could not find that place.'; }
+    };
+    $('pubHere').onclick = () => {
+      if (!navigator.geolocation) return alert('Location is off.');
+      navigator.geolocation.getCurrentPosition(async (pos) => {
+        const lat = pos.coords.latitude, lon = pos.coords.longitude;
+        $('pubLoc').value = lat.toFixed(3) + ', ' + lon.toFixed(3);
+        try { await searchPublic(lat, lon, 'your location'); } catch (e) { $('pubMeta').textContent = 'Public land search failed. Try again in a minute.'; }
+      }, () => alert('Allow location and try again.'));
+    };
+    $('addSighting').onclick = async () => {
       const rec = store.lands(store.session()).find(x => String(x.id) === $('farmPick').value);
       if (!rec) return alert('Pick a farm first.');
       if (!$('seeDate').value) return alert('Add a date.');
       rec.sightings = rec.sightings || [];
+      const photo = await shrinkPhoto($('seePhoto') && $('seePhoto').files && $('seePhoto').files[0]);
       rec.sightings.push({
         date: $('seeDate').value,
         time: $('seeTime').value,
         count: Number($('seeCount').value || 1),
-        note: $('seeNote').value.trim()
+        kind: $('seeKind') ? $('seeKind').value : 'unknown',
+        note: $('seeNote').value.trim(),
+        photo
       });
-      updateLand(rec);
+      try { updateLand(rec); } catch (e) { return alert('Photo is too big for this device storage. Try a smaller picture.'); }
       renderSightings(rec);
       $('seeNote').value = '';
+      if ($('seePhoto')) $('seePhoto').value = '';
       if (huntWx) renderHuntWeek(0);
     };
 
