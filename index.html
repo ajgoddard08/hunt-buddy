@@ -2047,51 +2047,56 @@
       const from = (lastWind && lastWind.deg) || 180;
       const goingDeg = windGoing(from);
       const going = goingDeg * Math.PI / 180;
-      const speed = Math.max(2, (lastWind && lastWind.speed) || 6);
+      const speed = Math.max(1, (lastWind && lastWind.speed) || 6);
+      const yards = Math.round(Math.min(420, 90 + speed * 22));
+      const reach = yards / 121000;
       list.forEach(rec => {
         if (rec.standLat == null || rec.standLon == null) return;
-        const points = [[rec.standLat, rec.standLon]];
-        for (let i = 1; i <= 14; i++) {
-          const dist = i * 0.00022 * (speed / 6);
-          const wobble = Math.sin(i * 0.7) * 0.00002 * i;
-          const lat = rec.standLat + Math.cos(going) * dist + Math.sin(going) * wobble;
-          const lon = rec.standLon + Math.sin(going) * dist / Math.cos(rec.standLat * Math.PI / 180);
-          points.push([lat, lon]);
-          L.circleMarker([lat, lon], {
-            radius: Math.max(2, 5.5 - i * 0.22),
-            color: '#e7f0b0',
-            fillColor: '#d4e07a',
-            fillOpacity: Math.max(0.12, 0.75 - i * 0.04),
-            weight: 0,
+        const strands = [-1, -0.45, 0, 0.45, 1];
+        strands.forEach((side, si) => {
+          const pts = [[rec.standLat, rec.standLon]];
+          for (let i = 1; i <= 16; i++) {
+            const t = i / 16;
+            const dist = reach * t;
+            const fan = side * dist * 0.55;
+            const wave = Math.sin(t * 9 + si) * dist * 0.12 + Math.sin(t * 17 + si * 2) * dist * 0.05;
+            const across = fan + wave;
+            const lat = rec.standLat + Math.cos(going) * dist + Math.sin(going) * across;
+            const lon = rec.standLon + Math.sin(going) * dist / Math.cos(rec.standLat * Math.PI / 180) - Math.cos(going) * across;
+            pts.push([lat, lon]);
+            if (i % 2 === 0) {
+              L.circleMarker([lat, lon], {
+                radius: Math.max(1.5, 4.2 - t * 2.4),
+                color: '#e7f0b0',
+                fillColor: '#d4e07a',
+                fillOpacity: Math.max(0.08, 0.45 - t * 0.3),
+                weight: 0,
+                interactive: false
+              }).addTo(scentLayer);
+            }
+          }
+          L.polyline(pts, {
+            color: '#d4e07a',
+            weight: si === 2 ? 2 : 1,
+            opacity: si === 2 ? 0.55 : 0.28,
             interactive: false
           }).addTo(scentLayer);
-        }
-        L.polyline(points, { color: '#d4e07a', weight: 2, opacity: 0.55, interactive: false }).addTo(scentLayer);
-        const tip = points[points.length - 1];
-        L.marker(tip, {
+        });
+        const tipLat = rec.standLat + Math.cos(going) * reach;
+        const tipLon = rec.standLon + Math.sin(going) * reach / Math.cos(rec.standLat * Math.PI / 180);
+        L.marker([tipLat, tipLon], {
           interactive: false,
           icon: L.divIcon({
             className: 'scent-tip',
-            iconSize: [70, 18],
-            iconAnchor: [35, 9],
-            html: '<div style="font-size:10px;color:#e7f0b0;text-shadow:0 1px 2px #000">scent</div>'
+            iconSize: [80, 16],
+            iconAnchor: [40, 8],
+            html: '<div style="font-size:10px;color:#e7f0b0;text-shadow:0 1px 2px #000">~' + yards + ' yd</div>'
           })
         }).addTo(scentLayer);
-        for (let a = -35; a <= 35; a += 35) {
-          const ang = (goingDeg + 180 + a) * Math.PI / 180;
-          const endLat = rec.standLat + Math.cos(ang) * 0.0016;
-          const endLon = rec.standLon + Math.sin(ang) * 0.0016 / Math.cos(rec.standLat * Math.PI / 180);
-          L.polyline([[endLat, endLon], [rec.standLat, rec.standLon]], {
-            color: '#8fbf62', weight: 2, dashArray: '4 6', opacity: 0.8, interactive: false
-          }).addTo(scentLayer);
-        }
       });
       const fromName = dirName(from);
       const toName = dirName(goingDeg);
-      const good = speed < 12;
-      const note = good
-        ? 'Wind from ' + fromName + ', scent blows ' + toName + '. Deer upwind (from the ' + fromName + ') can smell you. Best approach is from the ' + toName + '.'
-        : 'Wind from ' + fromName + ' at ' + speed.toFixed(0) + ' mph. Strong enough that scent is scattered. Still stay downwind of where you expect deer.';
+      const note = 'Wind from ' + fromName + '. Scent plume blows ' + toName + ' about ' + yards + ' yards, spreading as it goes. Deer upwind can still smell you.';
       if ($('windLabel')) $('windLabel').textContent = note;
     }
     function resetSketch() {
