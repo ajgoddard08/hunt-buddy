@@ -485,6 +485,8 @@
             <button class="map-bubble" id="mapSearchBtn" title="Search">⌕</button>
             <button class="map-bubble" id="mapHere" title="My location">➤</button>
             <button class="map-bubble" id="mapFolderBtn" title="Saved farms">▤</button>
+            <button class="map-bubble" id="startPin" title="Drop stand">📍</button>
+            <button class="map-bubble" id="startDraw" title="Outline land">▢</button>
           </div>
           <div class="map-sheet" id="mapSearchSheet">
             <input id="mapSearchBox" placeholder="Search a place" />
@@ -500,9 +502,7 @@
               <option value="mix">Mix / edge</option>
             </select>
             <div class="row" style="margin-top:8px">
-              <button class="btn gold" id="startPin">Drop stand</button>
-              <button class="btn gold" id="startDraw">Outline land</button>
-              <button class="btn" id="finishDraw">Finish</button>
+              <button class="btn" id="finishDraw">Finish outline</button>
               <button class="btn ghost" id="clearDraw">Cancel</button>
             </div>
             <p class="tiny" id="windLabel" style="margin-top:8px">Wind —</p>
@@ -1953,7 +1953,7 @@
         const w = winds[i] || lastWind;
         const deg = w.deg || 0;
         const speed = w.speed || 0;
-        const goingDeg = (deg + 180) % 360;
+        const goingDeg = windGoing(deg);
         const going = goingDeg * Math.PI / 180;
         const color = windColor(speed);
         const shaft = Math.min(latStep, lngStep) * 0.22;
@@ -1973,7 +1973,7 @@
 
     function updateWindArrow(deg, speed) {
       lastWind = { deg, speed };
-      const going = (deg + 180) % 360;
+      const going = windGoing(deg);
       if ($('windArrow')) {
         $('windArrow').style.transform = `rotate(${going}deg)`;
         $('windArrow').style.borderBottomColor = windColor(speed);
@@ -2036,31 +2036,63 @@
       return list.find(rec => rec.points && rec.points.length >= 3 && pointInPoly(lat, lon, rec.points))
         || list.find(rec => rec.sw && rec.ne && lat >= rec.sw[0] && lat <= rec.ne[0] && lon >= rec.sw[1] && lon <= rec.ne[1]);
     }
+    function windGoing(deg) {
+      return ((Number(deg) || 0) + 180) % 360;
+    }
     function drawScent() {
       if (!map) return;
       if (!scentLayer) scentLayer = L.layerGroup().addTo(map);
       scentLayer.clearLayers();
       const list = store.session() ? store.lands(store.session()) : [];
       const from = (lastWind && lastWind.deg) || 180;
-      const going = ((from + 180) % 360) * Math.PI / 180;
-      const speed = Math.max(3, (lastWind && lastWind.speed) || 6);
+      const goingDeg = windGoing(from);
+      const going = goingDeg * Math.PI / 180;
+      const speed = Math.max(2, (lastWind && lastWind.speed) || 6);
       list.forEach(rec => {
         if (rec.standLat == null || rec.standLon == null) return;
-        for (let i = 1; i <= 12; i++) {
-          const dist = i * 0.00028 * (speed / 7);
-          const wobble = (i % 2 === 0 ? 1 : -1) * i * 0.000035;
+        const points = [[rec.standLat, rec.standLon]];
+        for (let i = 1; i <= 14; i++) {
+          const dist = i * 0.00022 * (speed / 6);
+          const wobble = Math.sin(i * 0.7) * 0.00002 * i;
           const lat = rec.standLat + Math.cos(going) * dist + Math.sin(going) * wobble;
           const lon = rec.standLon + Math.sin(going) * dist / Math.cos(rec.standLat * Math.PI / 180);
+          points.push([lat, lon]);
           L.circleMarker([lat, lon], {
-            radius: Math.max(2.5, 6 - i * 0.28),
-            color: '#d6e38a',
-            fillColor: '#c5d86a',
-            fillOpacity: Math.max(0.15, 0.7 - i * 0.045),
+            radius: Math.max(2, 5.5 - i * 0.22),
+            color: '#e7f0b0',
+            fillColor: '#d4e07a',
+            fillOpacity: Math.max(0.12, 0.75 - i * 0.04),
             weight: 0,
             interactive: false
           }).addTo(scentLayer);
         }
+        L.polyline(points, { color: '#d4e07a', weight: 2, opacity: 0.55, interactive: false }).addTo(scentLayer);
+        const tip = points[points.length - 1];
+        L.marker(tip, {
+          interactive: false,
+          icon: L.divIcon({
+            className: 'scent-tip',
+            iconSize: [70, 18],
+            iconAnchor: [35, 9],
+            html: '<div style="font-size:10px;color:#e7f0b0;text-shadow:0 1px 2px #000">scent</div>'
+          })
+        }).addTo(scentLayer);
+        for (let a = -35; a <= 35; a += 35) {
+          const ang = (goingDeg + 180 + a) * Math.PI / 180;
+          const endLat = rec.standLat + Math.cos(ang) * 0.0016;
+          const endLon = rec.standLon + Math.sin(ang) * 0.0016 / Math.cos(rec.standLat * Math.PI / 180);
+          L.polyline([[endLat, endLon], [rec.standLat, rec.standLon]], {
+            color: '#8fbf62', weight: 2, dashArray: '4 6', opacity: 0.8, interactive: false
+          }).addTo(scentLayer);
+        }
       });
+      const fromName = dirName(from);
+      const toName = dirName(goingDeg);
+      const good = speed < 12;
+      const note = good
+        ? 'Wind from ' + fromName + ', scent blows ' + toName + '. Deer upwind (from the ' + fromName + ') can smell you. Best approach is from the ' + toName + '.'
+        : 'Wind from ' + fromName + ' at ' + speed.toFixed(0) + ' mph. Strong enough that scent is scattered. Still stay downwind of where you expect deer.';
+      if ($('windLabel')) $('windLabel').textContent = note;
     }
     function resetSketch() {
       sketch = [];
@@ -2077,19 +2109,26 @@
     $('startPin').onclick = () => {
       drawMode = 'pin';
       resetSketch();
-      $('startPin').textContent = 'Click map…';
+      document.querySelectorAll('.map-sheet').forEach(s => s.classList.remove('show'));
+      $('startPin').textContent = '📍';
+      $('startPin').style.background = '#ff6a13';
+      alert('Tap inside the farm outline to drop the stand.');
     };
     $('startDraw').onclick = () => {
       drawMode = 'poly';
       resetSketch();
-      $('startDraw').textContent = 'Click corners…';
+      document.querySelectorAll('.map-sheet').forEach(s => s.classList.remove('show'));
+      $('startDraw').style.background = '#ff6a13';
+      alert('Tap the corners of the farm, then open Tools and tap Finish outline.');
     };
     $('finishDraw').onclick = () => finishPoly();
     $('clearDraw').onclick = () => {
       drawMode = null;
       resetSketch();
-      $('startPin').textContent = 'Drop stand';
-      $('startDraw').textContent = 'Outline land';
+      $('startPin').textContent = '📍';
+      $('startPin').style.background = '#111';
+      $('startDraw').textContent = '▢';
+      $('startDraw').style.background = '#111';
     };
 
     function saveRec(rec) {
@@ -2099,8 +2138,10 @@
       $('landName').value = '';
       drawMode = null;
       resetSketch();
-      $('startPin').textContent = 'Drop stand';
-      $('startDraw').textContent = 'Outline land';
+      $('startPin').textContent = '📍';
+      $('startPin').style.background = '#111';
+      $('startDraw').textContent = '▢';
+      $('startDraw').style.background = '#111';
       renderLands();
       selectLand(rec);
     }
@@ -2130,8 +2171,9 @@
         farm.standName = $('landName').value.trim() || 'Stand';
         updateLand(farm);
         drawMode = null;
-        $('startPin').textContent = 'Drop stand';
-        return;
+        $('startPin').textContent = '📍';
+        $('startPin').style.background = '#111';
+        alert('Stand saved on ' + farm.name);
       }
       if (drawMode === 'poly') {
         sketch.push(e.latlng);
