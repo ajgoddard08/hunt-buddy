@@ -567,31 +567,74 @@
 
       <section id="bucks" class="page">
         <div class="card">
-          <h2>Named bucks</h2>
-          <p class="tiny">Save a buck by name. Compare two photos side by side. The match score is a rough hint from the picture, not proof it is the same deer — antlers, body, and location still decide it.</p>
+          <h2>Field score</h2>
+          <p class="tiny">Seven tape numbers. Field estimate only — not an official Boone & Crockett or Pope & Young score. A certified scorer still measures each tine after the drying period.</p>
           <div class="row" style="margin-top:10px">
-            <input id="buckName" placeholder="Name this buck (North 8)" />
-            <button class="btn gold" type="button" id="saveBuck">Save buck</button>
+            <input id="scName" placeholder="Buck name" />
+            <input id="scSpread" type="number" step="0.125" placeholder="Inside spread" />
           </div>
+          <div class="row" style="margin-top:8px">
+            <input id="scLb" type="number" step="0.125" placeholder="Left beam" />
+            <input id="scRb" type="number" step="0.125" placeholder="Right beam" />
+          </div>
+          <div class="row" style="margin-top:8px">
+            <input id="scLt" type="number" step="0.125" placeholder="Left tines total" />
+            <input id="scRt" type="number" step="0.125" placeholder="Right tines total" />
+          </div>
+          <div class="row" style="margin-top:8px">
+            <input id="scLm" type="number" step="0.125" placeholder="Left mass (4 H)" />
+            <input id="scRm" type="number" step="0.125" placeholder="Right mass (4 H)" />
+            <button class="btn gold" type="button" id="scCalc">Score</button>
+          </div>
+          <p id="scOut" style="margin-top:10px;font-size:22px;font-family:Oswald,sans-serif"></p>
+          <p class="tiny" id="scHint"></p>
+          <div class="land-list" id="scList" style="margin-top:10px"></div>
+        </div>
+        <div class="card" style="margin-top:16px">
+          <h2>Your bucks</h2>
+          <p class="tiny">Drop a photo. If it looks like a buck you already have, you can add it to him. If not, name a new one. Delete any photo you added by mistake.</p>
           <div class="row" style="margin-top:10px">
-            <input id="cmpA" type="file" accept="image/*" />
-            <input id="cmpB" type="file" accept="image/*" />
-            <button class="btn" type="button" id="cmpBtn">Compare photos</button>
+            <input id="newBuckPhoto" type="file" accept="image/*" />
+            <button class="btn gold" type="button" id="checkPhoto">Check this photo</button>
           </div>
-          <div class="row" id="cmpRow" style="margin-top:10px;align-items:flex-start"></div>
-          <p class="tiny" id="cmpResult"></p>
+          <div id="photoCheck" style="margin-top:10px"></div>
           <div class="land-list" id="namedBuckList" style="margin-top:12px"></div>
         </div>
         <div class="card" style="margin-top:16px">
-          <h2>Farm buck photos</h2>
-          <p class="tiny">Sightings logged on Farms. File a photo under a named buck so times and farms stay together.</p>
+          <h2>Farm sightings</h2>
+          <p class="tiny">Bucks logged on Farms. File one under a named buck if you want it with his other photos.</p>
           <div class="land-list" id="buckList" style="margin-top:12px"></div>
         </div>
       </section>
 
       <section id="publicLand" class="page">
         <div class="card">
-          <h2>Public hunting land</h2>
+          <h2>Find a hunt</h2>
+          <p class="tiny">Pick species, state, and weapon. Places that usually allow that hunt show up, with where to buy the tag. Confirm the property rules before you go.</p>
+          <div class="row" style="margin-top:10px">
+            <select id="huntSpecies" style="width:auto">
+              <option value="deer">Deer</option>
+              <option value="turkey">Turkey</option>
+              <option value="waterfowl">Waterfowl</option>
+              <option value="small">Small game</option>
+            </select>
+            <select id="huntState" style="width:auto">
+              <option value="IN">Indiana</option>
+              <option value="IL">Illinois</option>
+              <option value="OH">Ohio</option>
+              <option value="MI">Michigan</option>
+              <option value="KY">Kentucky</option>
+            </select>
+            <select id="huntWeapon" style="width:auto">
+              <option value="any">Any weapon</option>
+              <option value="archery">Archery</option>
+              <option value="firearm">Firearm</option>
+              <option value="muzzle">Muzzleloader</option>
+            </select>
+            <button class="btn gold" type="button" id="huntFind">Find hunts</button>
+          </div>
+          <div id="tagBox" class="card" style="display:none;margin-top:12px"></div>
+          <h2 style="margin-top:18px">Public hunting land</h2>
           <p class="tiny">Searches nearby wildlife areas, nature reserves, and public forests from OpenStreetMap. Always confirm seasons, licenses, and rules with the state before you hunt.</p>
           <div class="row" style="margin-top:10px">
             <input id="pubLoc" placeholder="City or county" value="Westfield, Indiana" />
@@ -651,7 +694,9 @@
         try { fillSyncBox(); } catch (e) {}
       },
       bucks(email) { return JSON.parse(localStorage.getItem('ff_bucks_' + email) || '[]'); },
-      saveBucks(email, list) { localStorage.setItem('ff_bucks_' + email, JSON.stringify(list)); }
+      saveBucks(email, list) { localStorage.setItem('ff_bucks_' + email, JSON.stringify(list)); },
+      scores(email) { return JSON.parse(localStorage.getItem('ff_scores_' + email) || '[]'); },
+      saveScores(email, list) { localStorage.setItem('ff_scores_' + email, JSON.stringify(list)); }
     };
 
     function syncSlug(pin) {
@@ -2274,17 +2319,144 @@
       const box = $('namedBuckList');
       if (!box || !store.session()) return;
       const bucks = store.bucks(store.session());
-      box.innerHTML = bucks.length ? bucks.map(b => `
+      box.innerHTML = bucks.length ? bucks.map((b, bi) => `
         <div class="card" style="margin-top:8px">
-          <strong>${b.name}</strong>
+          <div class="row" style="justify-content:space-between">
+            <strong>${b.name}</strong>
+            <button class="btn ghost" type="button" data-delbuck="${bi}">Delete buck</button>
+          </div>
           <div class="tiny">${(b.photos || []).length} photo(s)</div>
-          ${(b.photos || []).map(p => `
+          ${(b.photos || []).map((p, pi) => `
             <div style="margin-top:8px">
               ${p.photo ? `<img src="${p.photo}" alt="" style="max-width:180px;border-radius:8px" />` : ''}
-              <div class="tiny">${p.date || ''} ${p.time || ''} · ${p.farm || 'unknown farm'}${p.note ? ' · ' + p.note : ''}</div>
+              <div class="tiny">${p.date || ''} ${p.time || ''} · ${p.farm || ''}${p.note ? ' · ' + p.note : ''}</div>
+              <button class="btn ghost" type="button" data-delphoto="${bi}:${pi}" style="margin-top:4px">Remove photo</button>
             </div>`).join('')}
-        </div>`).join('') : '<p class="tiny">No named bucks yet.</p>';
+          <div class="row" style="margin-top:8px">
+            <input type="file" accept="image/*" data-addto="${bi}" />
+            <button class="btn" type="button" data-addbtn="${bi}">Add photo to ${b.name}</button>
+          </div>
+        </div>`).join('') : '<p class="tiny">No named bucks yet. Drop a photo above to start one.</p>';
+      box.querySelectorAll('[data-delphoto]').forEach(btn => {
+        btn.onclick = () => {
+          const [bi, pi] = btn.dataset.delphoto.split(':').map(Number);
+          const list = store.bucks(store.session());
+          if (!list[bi] || !list[bi].photos) return;
+          if (!confirm('Remove this photo from ' + list[bi].name + '?')) return;
+          list[bi].photos.splice(pi, 1);
+          store.saveBucks(store.session(), list);
+          renderNamedBucks();
+        };
+      });
+      box.querySelectorAll('[data-delbuck]').forEach(btn => {
+        btn.onclick = () => {
+          const list = store.bucks(store.session());
+          const b = list[Number(btn.dataset.delbuck)];
+          if (!b || !confirm('Delete ' + b.name + ' and all his photos?')) return;
+          list.splice(Number(btn.dataset.delbuck), 1);
+          store.saveBucks(store.session(), list);
+          renderNamedBucks();
+        };
+      });
+      box.querySelectorAll('[data-addbtn]').forEach(btn => {
+        btn.onclick = async () => {
+          const bi = Number(btn.dataset.addbtn);
+          const input = box.querySelector('[data-addto="' + bi + '"]');
+          const file = input && input.files && input.files[0];
+          if (!file) return alert('Pick a photo first.');
+          const photo = await shrinkPhoto(file);
+          const list = store.bucks(store.session());
+          list[bi].photos = list[bi].photos || [];
+          list[bi].photos.push({ photo, date: localYMD(), time: '', farm: '', note: '' });
+          store.saveBucks(store.session(), list);
+          renderNamedBucks();
+        };
+      });
     }
+    async function dataUrlDiff(aUrl, bUrl) {
+      const load = (url) => new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          const c = document.createElement('canvas');
+          c.width = 32; c.height = 32;
+          const g = c.getContext('2d');
+          g.drawImage(img, 0, 0, 32, 32);
+          resolve(g.getImageData(0, 0, 32, 32).data);
+        };
+        img.onerror = reject;
+        img.src = url;
+      });
+      const [a, b] = await Promise.all([load(aUrl), load(bUrl)]);
+      let diff = 0, n = 0;
+      for (let i = 0; i < a.length; i += 4) {
+        const ga = (a[i] + a[i+1] + a[i+2]) / 3;
+        const gb = (b[i] + b[i+1] + b[i+2]) / 3;
+        diff += Math.abs(ga - gb);
+        n++;
+      }
+      return Math.max(0, Math.round(100 - (diff / n) / 1.6));
+    }
+    if ($('checkPhoto')) $('checkPhoto').onclick = async () => {
+      const file = $('newBuckPhoto').files && $('newBuckPhoto').files[0];
+      if (!file) return alert('Pick a photo.');
+      const photo = await shrinkPhoto(file);
+      const bucks = store.session() ? store.bucks(store.session()) : [];
+      const hits = [];
+      for (const b of bucks) {
+        for (const p of (b.photos || [])) {
+          if (!p.photo) continue;
+          try {
+            const score = await dataUrlDiff(photo, p.photo);
+            if (score >= 55) hits.push({ buck: b, score });
+          } catch (e) {}
+        }
+      }
+      hits.sort((a, b) => b.score - a.score);
+      const best = hits[0];
+      const box = $('photoCheck');
+      if (best) {
+        box.innerHTML = `
+          <p>This looks like it could be <strong>${best.buck.name}</strong> (match hint ${best.score}/100).</p>
+          <img src="${photo}" style="max-width:140px;border-radius:8px;margin:6px 8px 6px 0" />
+          <img src="${(best.buck.photos.find(p => p.photo) || {}).photo || ''}" style="max-width:140px;border-radius:8px;margin:6px 0" />
+          <div class="row" style="margin-top:8px">
+            <button class="btn gold" type="button" id="addToMatch">Add to ${best.buck.name}</button>
+            <button class="btn ghost" type="button" id="makeNew">No, this is a new buck</button>
+          </div>`;
+        $('addToMatch').onclick = () => {
+          if (!confirm('Add this photo to ' + best.buck.name + '?')) return;
+          const list = store.bucks(store.session());
+          const target = list.find(x => x.id === best.buck.id);
+          if (!target) return;
+          target.photos = target.photos || [];
+          target.photos.push({ photo, date: localYMD(), time: '', farm: '', note: '' });
+          store.saveBucks(store.session(), list);
+          box.innerHTML = '<p class="tiny">Added to ' + best.buck.name + '.</p>';
+          $('newBuckPhoto').value = '';
+          renderNamedBucks();
+        };
+      } else {
+        box.innerHTML = `
+          <p>No close match. This looks like a new buck.</p>
+          <img src="${photo}" style="max-width:160px;border-radius:8px;margin-top:6px" />
+          <div class="row" style="margin-top:8px">
+            <input id="freshName" placeholder="Name him" />
+            <button class="btn gold" type="button" id="makeNew">Save as new buck</button>
+          </div>`;
+      }
+      const make = $('makeNew');
+      if (make) make.onclick = () => {
+        const name = ($('freshName') && $('freshName').value.trim()) || prompt('Name this buck');
+        if (!name) return;
+        if (!confirm('Create a new buck named ' + name + '?')) return;
+        const list = store.bucks(store.session());
+        list.push({ id: Date.now(), name, photos: [{ photo, date: localYMD(), time: '', farm: '', note: '' }] });
+        store.saveBucks(store.session(), list);
+        box.innerHTML = '<p class="tiny">Saved ' + name + '.</p>';
+        $('newBuckPhoto').value = '';
+        renderNamedBucks();
+      };
+    };
     function thumbDiff(fileA, fileB) {
       const load = (file) => new Promise((resolve, reject) => {
         const img = new Image();
@@ -2310,31 +2482,35 @@
         return Math.max(0, Math.round(100 - avg / 1.6));
       });
     }
-    if ($('saveBuck')) $('saveBuck').onclick = () => {
-      const name = $('buckName').value.trim();
-      if (!name) return alert('Name the buck.');
-      const bucks = store.bucks(store.session());
-      bucks.push({ id: Date.now(), name, photos: [] });
-      store.saveBucks(store.session(), bucks);
-      $('buckName').value = '';
-      renderNamedBucks();
-      renderBucks();
-    };
-    if ($('cmpBtn')) $('cmpBtn').onclick = async () => {
-      const a = $('cmpA').files && $('cmpA').files[0];
-      const b = $('cmpB').files && $('cmpB').files[0];
-      if (!a || !b) return alert('Pick two photos.');
-      const pa = await shrinkPhoto(a);
-      const pb = await shrinkPhoto(b);
-      $('cmpRow').innerHTML = `<img src="${pa}" style="max-width:46%;border-radius:8px" /><img src="${pb}" style="max-width:46%;border-radius:8px" />`;
-      try {
-        const score = await thumbDiff(a, b);
-        const word = score >= 72 ? 'Could be the same deer — check rack and body.' : score >= 50 ? 'Maybe. Lighting or angle may be throwing it off.' : 'Looks like different deer, or a bad angle.';
-        $('cmpResult').textContent = 'Match hint ' + score + ' / 100. ' + word;
-      } catch (e) {
-        $('cmpResult').textContent = 'Could not compare those photos.';
-      }
-    };
+    function renderScores() {
+      const box = $('scList');
+      if (!box || !store.session()) return;
+      const list = store.scores(store.session());
+      box.innerHTML = list.length ? list.slice().reverse().map(s => `
+        <div class="land-item">
+          <div><strong>${s.name}</strong>
+          <div class="tiny">Gross ${s.gross} · Net ${s.net} · spread ${s.spread}"</div></div>
+        </div>`).join('') : '<p class="tiny">No scored bucks yet.</p>';
+    }
+    function fieldScore() {
+      const n = (id) => Number($(id).value || 0);
+      const spread = n('scSpread'), lb = n('scLb'), rb = n('scRb');
+      const lt = n('scLt'), rt = n('scRt'), lm = n('scLm'), rm = n('scRm');
+      if (!spread || !lb || !rb) return alert('Need inside spread and both beams.');
+      const spreadCredit = Math.min(spread, Math.max(lb, rb));
+      const gross = spreadCredit + lb + rb + lt + rt + lm + rm;
+      const deduct = Math.abs(lb - rb) + Math.abs(lt - rt) + Math.abs(lm - rm);
+      const net = gross - deduct;
+      const name = $('scName').value.trim() || 'Unnamed buck';
+      $('scOut').textContent = 'Gross ' + gross.toFixed(1) + '  ·  Net ' + net.toFixed(1);
+      $('scHint').textContent = 'Spread credit ' + spreadCredit.toFixed(1) + ' (capped at the longer beam). Deduction ' + deduct.toFixed(1) + ' for left/right difference. Tape in eighths if you can.';
+      const list = store.scores(store.session() || 'guest');
+      list.push({ name, spread, gross: +gross.toFixed(1), net: +net.toFixed(1), t: Date.now() });
+      store.saveScores(store.session() || 'guest', list);
+      renderScores();
+    }
+    if ($('scCalc')) $('scCalc').onclick = fieldScore;
+    if ($('scList')) renderScores();
     const IN_PUBLIC = [
       { name: 'Atterbury Fish & Wildlife Area', lat: 39.35, lon: -86.05, state: 'IN', kind: 'Fish & Wildlife Area' },
       { name: 'Chinook Fish & Wildlife Area', lat: 40.78, lon: -86.78, state: 'IN', kind: 'Fish & Wildlife Area' },
@@ -2355,8 +2531,64 @@
       { name: 'Yellowwood State Forest', lat: 39.18, lon: -86.33, state: 'IN', kind: 'State Forest' },
       { name: 'Morgan-Monroe State Forest', lat: 39.32, lon: -86.42, state: 'IN', kind: 'State Forest' },
       { name: 'Clark State Forest', lat: 38.40, lon: -85.85, state: 'IN', kind: 'State Forest' },
-      { name: 'Jackson-Washington State Forest', lat: 38.85, lon: -86.05, state: 'IN', kind: 'State Forest' }
+      { name: 'Jackson-Washington State Forest', lat: 38.85, lon: -86.05, state: 'IN', kind: 'State Forest' },
+      { name: 'Shelbyville State Fish & Wildlife Area', lat: 39.45, lon: -88.80, state: 'IL', kind: 'Fish & Wildlife Area' },
+      { name: 'Horseshoe Lake State Park', lat: 37.15, lon: -89.35, state: 'IL', kind: 'State Park' },
+      { name: 'Deer Creek State Park', lat: 39.62, lon: -82.05, state: 'OH', kind: 'State Park' },
+      { name: 'Killdeer Plains Wildlife Area', lat: 40.70, lon: -83.25, state: 'OH', kind: 'Wildlife Area' },
+      { name: 'Allegan State Game Area', lat: 42.55, lon: -85.95, state: 'MI', kind: 'State Game Area' },
+      { name: 'Land Between the Lakes', lat: 36.85, lon: -88.05, state: 'KY', kind: 'National Recreation Area' }
     ];
+    const TAGS = {
+      IN: { buy: 'https://www.in.gov/dnr/fish-and-wildlife/licenses-and-permits/', rules: 'https://www.eregulations.com/indiana/hunting', office: 'Indiana DNR · 317-232-4200', note: 'Hunting license plus a deer or turkey license for those seasons. Buy online or at a retailer.' },
+      IL: { buy: 'https://www2.illinois.gov/dnr/hunting/Pages/default.aspx', rules: 'https://www.eregulations.com/illinois/hunting', office: 'Illinois DNR', note: 'Illinois hunting license. Deer and turkey need a permit. Some public sites need a site permit.' },
+      OH: { buy: 'https://ohiodnr.gov/buy-and-apply/hunting-fishing-boating/hunting-resources/hunting-licenses', rules: 'https://www.eregulations.com/ohio/hunting', office: 'Ohio DNR', note: 'Ohio hunting license. Deer and turkey permits are separate.' },
+      MI: { buy: 'https://www.michigan.gov/dnr/buy-and-apply', rules: 'https://www.eregulations.com/michigan/hunting', office: 'Michigan DNR', note: 'Base license plus a deer or turkey license. Some public land is limited access.' },
+      KY: { buy: 'https://fw.ky.gov/Hunt/Pages/default.aspx', rules: 'https://www.eregulations.com/kentucky/hunting', office: 'Kentucky Fish & Wildlife', note: 'Kentucky hunting license. Deer and turkey tags are extra.' }
+    };
+    function weaponLine(w) {
+      if (w === 'archery') return 'Archery season. Bow or crossbow where the state allows it.';
+      if (w === 'firearm') return 'Firearm season. Check legal guns for that state and property.';
+      if (w === 'muzzle') return 'Muzzleloader season.';
+      return 'Any legal weapon for the open season.';
+    }
+    function speciesLine(sp) {
+      if (sp === 'deer') return 'Deer. Needs a deer license or tag on top of a hunting license.';
+      if (sp === 'turkey') return 'Turkey. Needs a turkey license. Spring and fall dates differ.';
+      if (sp === 'waterfowl') return 'Ducks and geese. Needs a hunting license, state waterfowl stamp, federal duck stamp, and HIP.';
+      return 'Small game. Hunting license covers most of it. Check bag limits.';
+    }
+    function findHunts() {
+      const sp = $('huntSpecies').value;
+      const st = $('huntState').value;
+      const w = $('huntWeapon').value;
+      const tag = TAGS[st];
+      const places = IN_PUBLIC.filter(p => p.state === st);
+      $('tagBox').style.display = 'block';
+      $('tagBox').innerHTML = `
+        <strong>Tags and licenses · ${st}</strong>
+        <p class="tiny" style="margin-top:6px">${speciesLine(sp)} ${weaponLine(w)}</p>
+        <p class="tiny">${tag.note}</p>
+        <p class="tiny">Contact: ${tag.office}</p>
+        <div class="row" style="margin-top:8px">
+          <a class="btn" target="_blank" rel="noopener" href="${tag.buy}">Get tags</a>
+          <a class="btn ghost" target="_blank" rel="noopener" href="${tag.rules}">Rules</a>
+        </div>`;
+      window._pubSpots = places.map(p => ({ ...p, miles: 0, types: speciesLine(sp) + ' ' + weaponLine(w) }));
+      $('pubMeta').textContent = places.length ? places.length + ' public places in ' + st + ' that typically allow this hunt.' : 'No built-in places for that state yet. Use the city search below.';
+      $('pubList').innerHTML = places.map((s, i) => `
+        <div class="land-item">
+          <div>
+            <strong>${s.name}</strong>
+            <div class="tiny">${s.kind} · ${sp} · ${w}</div>
+          </div>
+          <button class="btn ghost" type="button" data-pub="${i}">Open</button>
+        </div>`).join('') || '<p class="tiny">Try another state, or search a city below.</p>';
+      $('pubList').querySelectorAll('[data-pub]').forEach(b => {
+        b.onclick = () => openPublic(window._pubSpots[Number(b.dataset.pub)]);
+      });
+    }
+    if ($('huntFind')) $('huntFind').onclick = findHunts;
     function statePack(label) {
       const s = (label || '').toLowerCase();
       if (s === 'in' || s.includes('indiana') || s.includes(', in')) return {
